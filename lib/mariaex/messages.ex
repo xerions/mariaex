@@ -1,0 +1,103 @@
+defmodule Mariaex.Messages do
+  @moduledoc false
+
+  import Record, only: [defrecord: 2]
+  use Mariaex.Coder
+
+  @protocol_vsn_major 3
+  @protocol_vsn_minor 0
+
+  defrecord :packet, [:size, :seqnum, :msg, :body]
+
+
+  @auth_types [ ok: 0, kerberos: 2, cleartext: 3, md5: 5, scm: 6, gss: 7,
+                sspi: 9, gss_cont: 8 ]
+
+  @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
+                  position: ?P, internal_position: ?p, internal_query: ?q,
+                  where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
+                  constraint: ?n, file: ?F, line: ?L, routine: ?R ]
+
+  @commands [ com_sleep: 0x00, com_quit: 0x01, com_init_bd: 0x02,
+              com_query: 0x03, com_field_list: 0x04, com_create_db: 0x05,
+              com_drop_db: 0x06, com_refresh: 0x07, com_shutdown: 0x08,
+              com_statistics: 0x09, com_process_info: 0x0a, com_connect: 0x0b,
+              com_process_kill: 0x0c, com_debug: 0x0d, com_ping: 0x0e,
+              com_time: 0x0f, com_delayed_inser: 0x10, com_change_use: 0x11,
+              com_binlog_dump: 0x12, com_table_dump: 0x13, com_connect_out: 0x14,
+              com_register_slave: 0x15, com_stmt_prepare: 0x16, com_stmt_execute: 0x17,
+              com_stmt_send_long_data: 0x18, com_stmt_close: 0x19, com_stmt_reset: 0x1a,
+              com_set_option: 0x1b, com_stmt_fetch: 0x1c, com_daemon: 0x1d,
+              com_binlog_dump_gtid: 0x1e, com_reset_connection: 0x1f]
+
+  for {command, nummer} <- @commands do
+    defmacro unquote(command)(), do: unquote(nummer)
+  end
+
+  defcoder :handshake do
+    protocol_version 1
+    server_version :string
+    connection_id 4
+    auth_plugin_data1 :string
+    capability_flags_1 2
+    character_set 1
+    status_flags 2
+    capability_flags_2 2
+    length_auth_plugin_data 1
+    _ 10
+    auth_plugin_data2 :string #max(13, length_auth_plugin_data - 8), :string
+    plugin :string
+  end
+
+  defcoder :handshake_resp do
+    capability_flags 4
+    max_size 4
+    character_set 1
+    _ 23
+    user :string
+    password :length_string
+    database :string
+  end
+
+  defcoder :ok_resp do
+    header 1
+    affected_rows :length_encoded_integer
+    last_insert_id :length_encoded_integer
+    status_flags 2
+    warnings 2
+    message :string_eof
+  end
+
+  defcoder :error_resp do
+    header 1
+    error_code 2
+    sql_state_marker 1, :string
+    sql_state 5, :string
+    error_message :string_eof
+  end
+
+  defcoder :text_cmd do
+    command 1
+    statement :string_eof
+  end
+
+  def decode(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, state) do
+    {packet(size: len, seqnum: seqnum, msg: decode_msg(body, state), body: body), rest}
+  end
+
+  def decode(rest, state) do
+    {nil, rest}
+  end
+
+  def encode(msg, seqnum) do
+    body = encode_msg(msg)
+    <<(byte_size(body)) :: 24-little, seqnum :: 8, body :: binary>>
+  end
+
+  def decode_msg(body, :handshake), do: __decode__(:handshake, body)
+  def decode_msg(<< 0 :: 8, _ :: binary >> = body, _), do: __decode__(:ok_resp, body)
+  def decode_msg(<< 255 :: 8, _ :: binary >> = body, _), do: __decode__(:error_resp, body)
+
+  def encode_msg(rec), do: __encode__(rec)
+
+end
