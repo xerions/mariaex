@@ -34,6 +34,43 @@ defmodule Mariaex.Messages do
     defmacro unquote(command)(), do: unquote(nummer)
   end
 
+  @types [float:
+           [field_type_decimal: 0x00,
+            field_type_float: 0x04,
+            field_type_double: 0x05,
+            field_type_newdecimal: 0xf6],
+          integer:
+           [field_type_tiny: 0x01,
+            field_type_short: 0x02,
+            field_type_long: 0x03,
+            field_type_int24: 0x09,
+            field_type_year: 0x0d,
+            field_type_longlong: 0x08],
+          timestamp:
+           [field_type_timestamp: 0x07,
+            field_type_datetime: 0x0c],
+          date:
+           [field_type_date: 0x0a],
+          time:
+           [field_type_time: 0x0b],
+          bit:
+           [field_type_bit: 0x10],
+          string:
+           [field_type_varchar: 0x0f,
+            field_type_tiny_blob: 0xf9,
+            field_type_medium_blob: 0xfa,
+            field_type_long_blob: 0xfb,
+            field_type_blob: 0xfc,
+            field_type_var_string: 0xfd,
+            field_type_string: 0xfe]
+         ]
+
+  for {type, list} <- @types,
+      {_name, id} <- list do
+    function_name = "decode_#{type}" |> String.to_atom
+    def __type__(:decode, unquote(id)), do: unquote(function_name)
+  end
+
   defcoder :handshake do
     protocol_version 1
     server_version :string
@@ -68,6 +105,12 @@ defmodule Mariaex.Messages do
     message :string_eof
   end
 
+  defcoder :eof_resp do
+    header 1
+    warnings 2
+    status_flags 2
+  end
+
   defcoder :error_resp do
     header 1
     error_code 2
@@ -79,6 +122,30 @@ defmodule Mariaex.Messages do
   defcoder :text_cmd do
     command 1
     statement :string_eof
+  end
+
+  defcoder :column_count do
+    column_count :length_encoded_integer
+  end
+
+  defcoder :row do
+    row :length_encoded_string, :until_eof
+  end
+
+  defcoder :column_definition_41 do
+    catalog   :length_encoded_string
+    schema    :length_encoded_string
+    table     :length_encoded_string
+    org_table :length_encoded_string
+    name      :length_encoded_string
+    org_name  :length_encoded_string
+    length_of_fixed :length_encoded_integer
+    character_set 2
+    column_length 4
+    type 1
+    flags 2
+    decimals 1
+    _ 2
   end
 
   def decode(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, state) do
@@ -94,10 +161,21 @@ defmodule Mariaex.Messages do
     <<(byte_size(body)) :: 24-little, seqnum :: 8, body :: binary>>
   end
 
-  def decode_msg(body, :handshake), do: __decode__(:handshake, body)
-  def decode_msg(<< 0 :: 8, _ :: binary >> = body, _), do: __decode__(:ok_resp, body)
+  def decode_msg(body, :handshake), do:                      __decode__(:handshake, body)
+  def decode_msg(<< 0 :: 8, _ :: binary >> = body, _), do:   __decode__(:ok_resp, body)
+  def decode_msg(<< 254 :: 8, _ :: binary >> = body, _) when byte_size(body) < 9, do: __decode__(:eof_resp, body)
   def decode_msg(<< 255 :: 8, _ :: binary >> = body, _), do: __decode__(:error_resp, body)
+  def decode_msg(body, :query_send), do:                     __decode__(:column_count, body)
+  def decode_msg(body, :column_definitions), do:             __decode__(:column_definition_41, body)
+  def decode_msg(body, :rows), do:                           __decode__(:row, body)
+
+  def decode_string(data),    do: data
+  def decode_float(data),     do: Float.parse(data) |> elem(0)
+  def decode_integer(data),   do: Integer.parse(data) |> elem(0)
+  def decode_bit(<<bit>>),    do: bit
+  def decode_date(data),      do: {:date, :io_lib.fread('~d-~d-~d', to_char_list(data)) |> elem(1) |> List.to_tuple}
+  def decode_time(data),      do: {:time, :io_lib.fread('~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple}
+  def decode_timestamp(data), do: :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple
 
   def encode_msg(rec), do: __encode__(rec)
-
 end

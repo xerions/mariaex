@@ -4,6 +4,7 @@ defmodule Mariaex.Coder do
     quote do
       import Mariaex.Coder, only: [defcoder: 2]
       import Record, only: [defrecord: 2]
+      import Mariaex.Coder.Utils
 
       @before_compile unquote(__MODULE__)
       Module.register_attribute(__MODULE__, :decoders, accumulate: true)
@@ -26,7 +27,11 @@ defmodule Mariaex.Coder do
     end]
   end
 
-  defmacro defcoder(name, [do: {:__block__, _meta, spec}]) do
+  defmacro defcoder(name, [do: spec]) do
+    spec = case spec do
+             {:__block__, _meta, spec} -> spec
+             spec -> [spec]
+           end
     keys = for {key, _, _} <- spec, key != :_, do: key
     decoder = split_to_stages(spec) |> gen_stages(name, keys)
     encoder = gen_encoder(name, spec, keys)
@@ -62,17 +67,17 @@ defmodule Mariaex.Coder do
     end)
     case last do
       %{head: [], body: nil} -> other
-      _ -> [last | other]
+      _ -> [%{last | head: Enum.reverse(last.head) } | other]
     end |> Enum.reverse
   end
 
   defp gen_stages(allspec, name, keys) do
-    [{:=, _, [first_match | _]} = _ast | next_matches ] = matches = gen_matches(allspec, keys)
+    matches = gen_matches(allspec, keys)
     function = ("decode_" <> Atom.to_string(name)) |> String.to_atom
     result = quote do
       Module.put_attribute __MODULE__, :decoders, {unquote(name), unquote(function)}
-      def unquote(function)(unquote(first_match)) do
-        unquote_splicing(next_matches)
+      def unquote(function)(next) do
+        unquote_splicing(matches)
         unquote(name)(unquote(for key <- keys, do: {key, Macro.var(key, nil)}))
       end
     end
@@ -101,7 +106,15 @@ defmodule Mariaex.Coder do
   end
 
   defp gen_body({key, _, [:length_encoded_integer]}, _) do
-    length_encoded_integer(key)
+    quote do: {unquote(Macro.var(key, nil)), next} = length_encoded_integer(next)
+  end
+
+  defp gen_body({key, _, [:length_encoded_string]}, _) do
+    quote do: {unquote(Macro.var(key, nil)), next} = length_encoded_string(next)
+  end
+
+  defp gen_body({key, _, [:length_encoded_string, :until_eof]}, _) do
+    quote do: unquote(Macro.var(key, nil)) = length_encoded_string_eof(next)
   end
 
   defp gen_body({key, _, [:string]}, _) do
@@ -152,19 +165,57 @@ defmodule Mariaex.Coder do
   defp match({key, _, [:string_eof]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: binary)]
   end
-  # this clause is wrong, because it is imposible to generate this kind of integer in a binary match
+  # this clauses are wrong, because it is imposible to generate this kind of integer in a binary match
   defp match({key, _, [:length_encoded_integer]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: integer)]
   end
 
-  defp length_encoded_integer(key) do
+  defp match({key, _, [:length_encoded_string | _]}, :encode) do
+    [(quote do: unquote(Macro.var(key, nil)) :: binary)]
+  end
+
+  defp length_encoded_integer do
     quote do
-      {unquote(Macro.var(key, nil)), next} = case next do
+
+    end
+  end
+
+  defp length_encoded_string do
+    quote do
+
+    end
+  end
+
+  defmodule Utils do
+    def length_encoded_string(bin) do
+      case bin do
+        << 251 :: 8, rest :: bits >> -> {:undefined, rest}
+        _ ->
+          {length, next} = length_encoded_integer(bin)
+          << string :: size(length)-binary, next :: binary >> = next
+          {string, next}
+      end
+    end
+
+    def length_encoded_string_eof(bin, acc \\ []) do
+      case length_encoded_string(bin) do
+        {value, ""} ->
+          Enum.reverse([value | acc])
+        {value, rest} ->
+          length_encoded_string_eof(rest, [value | acc])
+      end
+    end
+
+
+    def length_encoded_integer(bin) do
+      case bin do
         << value :: 8, rest :: binary >> when value <= 250 -> {value, rest}
         << 252 :: 8, value :: 16-little, rest :: bits >> -> {value, rest}
         << 253 :: 8, value :: 24-little, rest :: bits >> -> {value, rest}
         << 254 :: 8, value :: 64-little, rest :: bits >> -> {value, rest}
       end
     end
+
   end
+
 end

@@ -5,20 +5,24 @@ defmodule Mariaex.Protocol do
   #alias Mariaex.Types
   import Mariaex.Messages
   use Bitwise, only_operators: true
+  import Record, only: [is_record: 2]
+
   @mysql_native_password "mysql_native_password"
 
   @maxpacketbytes 50000000
-  @long_password 1
-  @long_flag 4
-  @client_connect_with_db 8
-  @client_local_file 128
-  @protocol_41 512
-  @client_multi_statements 65536
-  @client_multi_results 131072
-  @transactions 8192
-  @secure_connection 32768
-  @capabilities [@long_password, @long_flag, @client_local_file, @transactions, @client_connect_with_db,
-                 @client_multi_statements, @client_multi_results, @protocol_41, @secure_connection]
+  @long_password           0x00000001
+  @long_flag               0x00000004
+  @client_connect_with_db  0x00000008
+  @client_local_file       0x00000080
+  @protocol_41             0x00000200
+  @transactions            0x00002000
+  @secure_connection       0x00008000
+  @client_multi_statements 0x00010000
+  @client_multi_results    0x00020000
+  @client_deprecate_eof    0x01000000
+  @capabilities [@long_password, @long_flag, @client_local_file, @transactions,
+                 @client_connect_with_db, @client_multi_statements, @client_multi_results,
+                 @protocol_41, @secure_connection, @client_deprecate_eof]
 
   def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = packet, %{state: :handshake, opts: opts} = s) do
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
@@ -28,7 +32,6 @@ defmodule Mariaex.Protocol do
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     capabilities = Enum.reduce(@capabilities, 0, &(&1 ||| &2))
-    IO.inspect({:database, opts[:database]})
     msg = handshake_resp(user: :unicode.characters_to_binary(opts[:user]), password: scramble,
                          database: opts[:database], capability_flags: capabilities,
                          max_size: @maxpacketbytes, character_set: 8)
@@ -41,8 +44,30 @@ defmodule Mariaex.Protocol do
     %{ state | state: :running }
   end
 
-  def dispatch(packet(msg: msg), state = %{queue: queue, state: :running}) do
+  def dispatch(packet(msg: msg), state = %{queue: queue, state: :query_send}) when elem(msg, 0) in [:ok_resp, :error_resp] do
     {_, state} = Connection.reply(msg, state)
+    %{ state | state: :running }
+  end
+
+  def dispatch(packet(msg: column_count(column_count: _count)), state = %{state: :query_send}) do
+    %{ state | state: :column_definitions, state_data: [] }
+  end
+
+  def dispatch(packet(msg: column_definition_41() = msg), state = %{state_data: acc, state: :column_definitions}) do
+    %{ state | state_data: [msg | acc] }
+  end
+
+  def dispatch(packet(msg: eof_resp() = msg), state = %{state_data: definitions, state: :column_definitions}) do
+    %{ state | state: :rows, state_data: {definitions, []} }
+  end
+
+  def dispatch(packet(msg: row() = msg), state = %{state: :rows, state_data: {definitions, acc}}) do
+    %{state | state_data: {definitions, [msg | acc]}}
+  end
+
+  def dispatch(packet(msg: msg), state = %{state: :rows, state_data: data})
+   when elem(msg, 0) in [:ok_resp, :eof_resp, :error_resp] do
+    {_, state} = Connection.reply(data, state)
     %{ state | state: :running }
   end
 
@@ -72,6 +97,7 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, s) do
     msg_send(text_cmd(command: com_query, statement: statement), s, 0)
+    %{s | state: :query_send }
   end
 
 end

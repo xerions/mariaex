@@ -113,7 +113,7 @@ defmodule Mariaex.Connection do
 
   @doc false
   def init([sock_mod]) do
-    {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
+    {:ok, %{sock: nil, tail: "", state: :ready, state_data: nil, parameters: %{}, backend_key: nil,
             sock_mod: sock_mod, seqnum: 0,
             rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
             transactions: 0, queue: :queue.new, opts: nil}}
@@ -163,8 +163,7 @@ defmodule Mariaex.Connection do
     s = %{s | queue: queue}
 
     if state == :running do
-      next(s)
-      {:noreply, s}
+      {:noreply, next(s)}
     else
       {:noreply, s}
     end
@@ -187,7 +186,6 @@ defmodule Mariaex.Connection do
 
   defp command({:query, statement, _params, opts}, s) do
     Protocol.send_query(statement, s)
-    s
   end
 
   defp process(blob, %{state: state, tail: tail} = s) do
