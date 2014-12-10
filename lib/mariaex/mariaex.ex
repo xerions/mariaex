@@ -113,9 +113,9 @@ defmodule Mariaex.Connection do
 
   @doc false
   def init([sock_mod]) do
-    {:ok, %{sock: nil, tail: "", state: :ready, state_data: nil, parameters: %{}, backend_key: nil,
-            sock_mod: sock_mod, seqnum: 0,
-            rows: [], statement: nil, portal: nil, bootstrap: false, types: nil,
+    {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
+            sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil,
+            types: nil,
             transactions: 0, queue: :queue.new, opts: nil}}
   end
 

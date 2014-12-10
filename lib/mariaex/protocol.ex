@@ -44,30 +44,42 @@ defmodule Mariaex.Protocol do
     %{ state | state: :running }
   end
 
-  def dispatch(packet(msg: msg), state = %{queue: queue, state: :query_send}) when elem(msg, 0) in [:ok_resp, :error_resp] do
-    {_, state} = Connection.reply(msg, state)
+  def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{queue: queue, statement: statement, state: :query_send}) do
+    error = %Mariaex.Error{mariadb: %{code: code, message: message}}
+    {_, state} = Connection.reply({:error, error}, state)
+    %{ state | state: :running }
+  end
+
+  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows)), state = %{queue: queue, statement: statement, state: :query_send}) do
+    result = %Mariaex.Result{command: get_command(statement), columns: [], rows: [], num_rows: affected_rows}
+    {_, state} = Connection.reply({:ok, result}, state)
     %{ state | state: :running }
   end
 
   def dispatch(packet(msg: column_count(column_count: _count)), state = %{state: :query_send}) do
-    %{ state | state: :column_definitions, state_data: [] }
+    %{ state | state: :column_definitions, types: [] }
   end
 
-  def dispatch(packet(msg: column_definition_41() = msg), state = %{state_data: acc, state: :column_definitions}) do
-    %{ state | state_data: [msg | acc] }
+  def dispatch(packet(msg: column_definition_41() = msg), state = %{types: acc, state: :column_definitions}) do
+    column_definition_41(type: type, name: name) = msg
+    %{ state | types: [{name, type} | acc] }
   end
 
-  def dispatch(packet(msg: eof_resp() = msg), state = %{state_data: definitions, state: :column_definitions}) do
-    %{ state | state: :rows, state_data: {definitions, []} }
+  def dispatch(packet(msg: eof_resp() = msg), state = %{types: definitions, state: :column_definitions}) do
+    %{ state | state: :rows, types: Enum.reverse(definitions) }
   end
 
-  def dispatch(packet(msg: row() = msg), state = %{state: :rows, state_data: {definitions, acc}}) do
-    %{state | state_data: {definitions, [msg | acc]}}
+  def dispatch(packet(msg: row(row: row)), state = %{state: :rows, types: definitions, rows: acc}) do
+    %{state | rows: [decode_type_row(row, definitions, []) | acc]}
   end
 
-  def dispatch(packet(msg: msg), state = %{state: :rows, state_data: data})
-   when elem(msg, 0) in [:ok_resp, :eof_resp, :error_resp] do
-    {_, state} = Connection.reply(data, state)
+  def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows, types: types, rows: rows})
+   when elem(msg, 0) in [:ok_resp, :eof_resp] do
+    result = %Mariaex.Result{command: get_command(statement),
+                             columns: (for {type, _} <- types, do: type),
+                             rows: Enum.reverse(rows),
+                             num_rows: length(rows)}
+    {_, state} = Connection.reply({:ok, result}, state)
     %{ state | state: :running }
   end
 
@@ -97,7 +109,11 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, s) do
     msg_send(text_cmd(command: com_query, statement: statement), s, 0)
-    %{s | state: :query_send }
+    %{s | statement: statement, state: :query_send }
+  end
+
+  defp get_command(statement) when is_binary(statement) do
+    statement |> String.split(" ", parts: 2) |> hd |> String.downcase |> String.to_atom
   end
 
 end

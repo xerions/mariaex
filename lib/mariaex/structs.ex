@@ -24,7 +24,7 @@ defmodule Mariaex.Error do
 
   def message(e) do
     if kw = e.mariaex do
-      msg = "#{kw[:severity]} (#{kw[:code]}): #{kw[:message]}"
+      msg = "(#{kw[:code]}): #{kw[:message]}"
     end
 
     msg || e.message

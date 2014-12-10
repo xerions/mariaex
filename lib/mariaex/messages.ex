@@ -68,7 +68,7 @@ defmodule Mariaex.Messages do
   for {type, list} <- @types,
       {_name, id} <- list do
     function_name = "decode_#{type}" |> String.to_atom
-    def __type__(:decode, unquote(id)), do: unquote(function_name)
+    def __type__(:decode, unquote(id)), do: fn(data) -> unquote(function_name)(data) end
   end
 
   defcoder :handshake do
@@ -178,4 +178,10 @@ defmodule Mariaex.Messages do
   def decode_timestamp(data), do: :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple
 
   def encode_msg(rec), do: __encode__(rec)
+
+  def decode_type_row([], [], acc), do: acc |> Enum.reverse |> List.to_tuple
+  def decode_type_row([elem | rest_rows], [{_name, type} | rest_defs], acc) do
+    function = __type__(:decode, type)
+    decode_type_row(rest_rows, rest_defs, [function.(elem) | acc])
+  end
 end
