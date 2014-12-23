@@ -20,4 +20,15 @@ Version: 0.0.1
   {:ok,
    %Mariaex.Result{columns: ["id", "title"], command: :select, num_rows: 2,
     rows: [{1, "test"}, {2, "test2"}]}}
+  iex(6)> Mariaex.Connection.in_transaction(p, fn() ->
+                                                 Mariaex.Connection.query!(p, "INSERT INTO test1 VALUES(3, 'test3')")
+                                                 Mariaex.Connection.query!(p, "INSERT INTO test1 VALUES(2, 'test2')")
+                                               end)
+  ** (Mariaex.Error) (1062): Duplicate entry '2' for key 'id'
+   lib/mariaex/mariaex.ex:128: Mariaex.Connection.query!/4
+   lib/mariaex/mariaex.ex:237: Mariaex.Connection.in_transaction/3
+  iex(7)> Mariaex.Connection.query(p, "SELECT id, title FROM test1")
+  {:ok,
+   %Mariaex.Result{columns: ["id", "title"], command: :select, num_rows: 2,
+    rows: [{1, "test"}, {2, "test2"}]}}
 ```
