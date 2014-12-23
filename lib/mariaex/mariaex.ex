@@ -6,10 +6,19 @@ defmodule Mariaex.Connection do
   use GenServer
   alias Mariaex.Protocol
   alias Mariaex.Messages
-  #import Mariaex.BinaryUtils
-  #import Mariaex.Utils
 
   @timeout 5000 #:infinity
+
+  defmacrop raiser(result) do
+    quote do
+      case unquote(result) do
+        {:error, error} ->
+          raise error
+        result ->
+          result
+      end
+    end
+  end
 
   ### PUBLIC API ###
 
@@ -109,6 +118,141 @@ defmodule Mariaex.Connection do
     timeout = opts[:timeout] || @timeout
     GenServer.call(pid, message, timeout)
   end
+
+  @doc """
+  Runs an (extended) query and returns the result or raises `Postgrex.Error` if
+  there was an error. See `query/3`.
+  """
+
+  def query!(pid, statement, params \\ [], opts \\ []) do
+    query(pid, statement, params, opts) |> raiser
+  end
+
+
+  @doc """
+  Starts a transaction. Returns `:ok` or `{:error, %Mariaex.Error{}}` if an
+  error occurred. Transactions can be nested with the help of savepoints. A
+  transaction won't end until a `rollback/1` or `commit/1` have been issued for
+  every `begin/1`.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+
+  ## Examples
+
+      # Transaction begun
+      Mariaex.Connection.begin(pid)
+      Mariaex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('first')")
+
+      # Nested subtransaction begun
+      Mariaex.Connection.begin(pid)
+      Mariaex.Connection.query(pid, "INSERT INTO comments (text) VALUES ('second')")
+
+      # Subtransaction rolled back
+      Mariaex.Connection.rollback(pid)
+
+      # Only the first comment will be commited because the second was rolled back
+      Mariaex.Connection.commit(pid)
+  """
+  @spec begin(pid, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  def begin(pid, opts \\ []) do
+    timeout = opts[:timeout] || @timeout
+    GenServer.call(pid, {:begin, opts}, timeout)
+  end
+
+  @doc """
+  Starts a transaction. Returns `:ok` if it was successful or raises
+  `Mariaex.Error` if an error occurred. See `begin/1`.
+  """
+  @spec begin!(pid, Keyword.t) :: :ok
+  def begin!(pid, opts \\ []) do
+    begin(pid, opts) |> raiser
+  end
+
+  @doc """
+  Rolls back a transaction. Returns `:ok` or `{:error, %Mariaex.Error{}}` if
+  an error occurred. See `begin/1` for more information.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  """
+  @spec rollback(pid, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  def rollback(pid, opts \\ []) do
+    timeout = opts[:timeout] || @timeout
+    GenServer.call(pid, {:rollback, opts}, timeout)
+  end
+
+  @doc """
+  Rolls back a transaction. Returns `:ok` if it was successful or raises
+  `Mariaex.Error` if an error occurred. See `rollback/1`.
+  """
+  @spec rollback!(pid, Keyword.t) :: :ok
+  def rollback!(pid, opts \\ []) do
+    rollback!(pid, opts) |> raiser
+  end
+
+  @doc """
+  Commits a transaction. Returns `:ok` or `{:error, %Mariaex.Error{}}` if an
+  error occurred. See `begin/1` for more information.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`)
+  """
+  @spec commit(pid, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  def commit(pid, opts \\ []) do
+    timeout = opts[:timeout] || @timeout
+    GenServer.call(pid, {:commit, opts}, timeout)
+  end
+
+  @doc """
+  Commits a transaction. Returns `:ok` if it was successful or raises
+  `Mariaex.Error` if an error occurred. See `commit/1`.
+  """
+  @spec commit!(pid, Keyword.t) :: :ok
+  def commit!(pid, opts \\ []) do
+    commit!(pid, opts) |> raiser
+  end
+
+  @doc """
+  Helper for creating reliable transactions. If an error is raised in the given
+  function the transaction is rolled back, otherwise it is commited. A
+  transaction can be cancelled with `throw :mariaex_rollback`. If there is a
+  connection error `Mariaex.Error` will be raised. Do not use this function in
+  conjunction with `begin/1`, `commit/1` and `rollback/1`.
+
+  ## Options
+
+    * `:timeout` - Call timeout (default: `#{@timeout}`). Note that it is not
+      the maximum timeout of the entire call but rather the timeout of the
+      `commit/2` and `rollback/2` calls that this function makes.
+  """
+  @spec in_transaction(pid, Keyword.t, (() -> term)) :: term
+  def in_transaction(pid, opts \\ [], fun) do
+    case begin(pid) do
+      :ok ->
+        try do
+          value = fun.()
+          case commit(pid, opts) do
+            :ok -> value
+            err -> raise err
+          end
+        catch
+          :throw, :mariaex_rollback ->
+            case rollback(pid, opts) do
+              :ok -> nil
+              err -> raise err
+            end
+          type, term ->
+            _ = rollback(pid, opts)
+            :erlang.raise(type, term, System.stacktrace)
+        end
+      err -> raise err
+    end
+  end
+
   ### GEN_SERVER CALLBACKS ###
 
   @doc false
@@ -186,6 +330,56 @@ defmodule Mariaex.Connection do
 
   defp command({:query, statement, _params, opts}, s) do
     Protocol.send_query(statement, s)
+  end
+
+  defp command({:begin, _opts}, %{transactions: trans} = s) do
+    if trans == 0 do
+      s = %{s | transactions: 1}
+      new_query("BEGIN", s)
+    else
+      s = %{s | transactions: trans + 1}
+      new_query("SAVEPOINT mariaex_#{trans}", s)
+    end
+  end
+
+  defp command({:rollback, _opts}, %{queue: queue, transactions: trans} = s) do
+    cond do
+      trans == 0 ->
+        reply(:ok, s)
+        queue = :queue.drop(queue)
+        {:ok, %{s | queue: queue}}
+      trans == 1 ->
+        s = %{s | transactions: 0}
+        new_query("ROLLBACK", s)
+      true ->
+        trans = trans - 1
+        s = %{s | transactions: trans}
+        new_query("ROLLBACK TO SAVEPOINT mariaex_#{trans}", s)
+    end
+  end
+
+  defp command({:commit, _opts}, %{queue: queue, transactions: trans} = s) do
+    case trans do
+      0 ->
+        reply(:ok, s)
+        queue = :queue.drop(queue)
+        {:ok, %{s | queue: queue}}
+      1 ->
+        s = %{s | transactions: 0}
+        new_query("COMMIT", s)
+      _ ->
+        reply(:ok, s)
+        queue = :queue.drop(queue)
+        {:ok, %{s | queue: queue, transactions: trans - 1}}
+    end
+  end
+
+  @doc false
+  def new_query(statement, %{queue: queue} = s) do
+    command = {:query, statement, [], []}
+    {{:value, {_command, from, timer}}, queue} = :queue.out(queue)
+    queue = :queue.in_r({command, from, timer}, queue)
+    command(command, %{s | queue: queue})
   end
 
   defp process(blob, %{state: state, tail: tail} = s) do

@@ -23,7 +23,7 @@ defmodule Mariaex.Error do
   defexception [:message, :mariadb]
 
   def message(e) do
-    if kw = e.mariaex do
+    if kw = e.mariadb do
       msg = "(#{kw[:code]}): #{kw[:message]}"
     end
 

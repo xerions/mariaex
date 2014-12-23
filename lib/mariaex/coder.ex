@@ -44,14 +44,12 @@ defmodule Mariaex.Coder do
 
   def gen_encoder(name, spec, keys) do
     function = ("encode_" <> Atom.to_string(name)) |> String.to_atom
-    result = quote do
+    quote do
       Module.put_attribute __MODULE__, :encoders, {unquote(name), unquote(function)}
       def unquote(function)(unquote(name)(unquote(for key <- keys, do: {key, Macro.var(key, nil)}))) do
         unquote({:<<>>, [], Enum.flat_map(spec, &match(&1, :encode))})
       end
     end
-    result |> Macro.to_string |> IO.puts
-    result
   end
 
   @empty_stage %{head: [], body: nil}
@@ -74,15 +72,13 @@ defmodule Mariaex.Coder do
   defp gen_stages(allspec, name, keys) do
     matches = gen_matches(allspec, keys)
     function = ("decode_" <> Atom.to_string(name)) |> String.to_atom
-    result = quote do
+    quote do
       Module.put_attribute __MODULE__, :decoders, {unquote(name), unquote(function)}
       def unquote(function)(next) do
         unquote_splicing(matches)
         unquote(name)(unquote(for key <- keys, do: {key, Macro.var(key, nil)}))
       end
     end
-    result |> Macro.to_string |> IO.puts
-    result
   end
 
   defp gen_matches(allspec, keys) do

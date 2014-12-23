@@ -51,8 +51,11 @@ defmodule Mariaex.Protocol do
   end
 
   def dispatch(packet(msg: ok_resp(affected_rows: affected_rows)), state = %{queue: queue, statement: statement, state: :query_send}) do
-    result = %Mariaex.Result{command: get_command(statement), columns: [], rows: [], num_rows: affected_rows}
-    {_, state} = Connection.reply({:ok, result}, state)
+    result = case affected_rows do
+               0 -> :ok
+               _ -> {:ok, %Mariaex.Result{command: get_command(statement), columns: [], rows: [], num_rows: affected_rows}}
+             end
+    {_, state} = Connection.reply(result, state)
     %{ state | state: :running }
   end
 
