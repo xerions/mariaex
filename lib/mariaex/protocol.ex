@@ -112,7 +112,7 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, s) do
     msg_send(text_cmd(command: com_query, statement: statement), s, 0)
-    %{s | statement: statement, state: :query_send }
+    %{s | statement: statement, state: :query_send, rows: []}
   end
 
   defp get_command(statement) when is_binary(statement) do

@@ -1,7 +1,7 @@
 Mariaex
 =======
 
-Version: 0.0.1
+Version: 0.0.1-dev
 
 ```elixir
   iex(1)> {:ok, p} = Mariaex.Connection.start_link(%{user: "ecto", database: "ecto_test"})
