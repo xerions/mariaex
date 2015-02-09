@@ -11,5 +11,5 @@ script:
   - mix test
 notifications:
   recipients:
-    #- elixmoon@gmail.com
+    - elixmoon@gmail.com
     - jquadrin@gmail.com
