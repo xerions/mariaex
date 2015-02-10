@@ -52,14 +52,6 @@ defmodule MariaexTest do
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
   end
-  
-  test "transaction", context do
-    {:ok, %Mariaex.Result{}} = Mariaex.Connection.in_transaction(context[:pid], fn() ->
-        Mariaex.Connection.query!(context[:pid], "INSERT INTO test1 VALUES(3, 'test3')")
-        Mariaex.Connection.query!(context[:pid], "INSERT INTO test1 VALUES(4, 'test4')")
-    end)
-    assert [{1,"test"},{2,"test2"},{3,"test3"},{4,"test4"}] = query("SELECT * FROM test1", [])
-  end
 
   test "error record", context do
     assert {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
