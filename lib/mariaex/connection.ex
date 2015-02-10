@@ -187,6 +187,9 @@ defmodule Mariaex.Connection do
     end
   end
 
+  def handle_info({:tcp_closed, _}, s) do
+    {:stop, %Mariaex.Error{message: "connection closed"}, s}
+  end
   def handle_info(sock_message, %{sock: {sock_mod, sock}, tail: tail} = s) do
     new_s = sock_mod.receive(sock, sock_message) |> process(s)
     sock_mod.next(sock)
