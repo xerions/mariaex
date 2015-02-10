@@ -4,7 +4,7 @@ Mariaex
 Version: 0.0.1-dev
 
 ```elixir
-  iex(1)> {:ok, p} = Mariaex.Connection.start_link(%{user: "ecto", database: "ecto_test"})
+  iex(1)> {:ok, p} = Mariaex.Connection.start_link(username: "ecto", database: "ecto_test")
   {:ok, #PID<0.108.0>}
 
   iex(2)> Mariaex.Connection.query(p, "CREATE TABLE test1 (id serial, title text)")
