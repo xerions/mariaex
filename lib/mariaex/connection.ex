@@ -188,7 +188,7 @@ defmodule Mariaex.Connection do
   end
 
   def handle_info({:tcp_closed, _}, s) do
-    {:stop, %Mariaex.Error{message: "connection closed"}, s}
+    {:stop, %Mariaex.Error{message: "authentication failed"}, s}
   end
   def handle_info(sock_message, %{sock: {sock_mod, sock}, tail: tail} = s) do
     new_s = sock_mod.receive(sock, sock_message) |> process(s)
