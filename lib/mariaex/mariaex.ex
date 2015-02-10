@@ -53,7 +53,7 @@ defmodule Mariaex.Connection do
     sock_type = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
     sock_mod = ("Elixir.Mariaex.Connection." <> sock_type) |> String.to_atom
     opts = opts
-      |> Dict.put_new(:user, System.get_env("MDBUSER") || System.get_env("USER"))
+      |> Dict.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
       |> Dict.put_new(:password, System.get_env("MDBPASSWORD"))
       |> Dict.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
     case GenServer.start_link(__MODULE__, [sock_mod]) do

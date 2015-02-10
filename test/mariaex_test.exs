@@ -3,7 +3,7 @@ defmodule MariaexTest do
   import Mariaex.TestHelper
 
   setup do
-    opts = [ database: "mariaex_test", user: "root" ]
+    opts = [ database: "mariaex_test", username: "root" ]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end

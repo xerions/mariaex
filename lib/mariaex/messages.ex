@@ -91,7 +91,7 @@ defmodule Mariaex.Messages do
     max_size 4
     character_set 1
     _ 23
-    user :string
+    username :string
     password :length_string
     database :string
   end

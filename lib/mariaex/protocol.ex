@@ -32,7 +32,7 @@ defmodule Mariaex.Protocol do
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     capabilities = Enum.reduce(@capabilities, 0, &(&1 ||| &2))
-    msg = handshake_resp(user: :unicode.characters_to_binary(opts[:user]), password: scramble,
+    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
                          database: opts[:database], capability_flags: capabilities,
                          max_size: @maxpacketbytes, character_set: 8)
     msg_send(msg, s, seqnum + 1)
