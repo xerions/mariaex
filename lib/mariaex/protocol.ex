@@ -5,7 +5,6 @@ defmodule Mariaex.Protocol do
   #alias Mariaex.Types
   import Mariaex.Messages
   use Bitwise, only_operators: true
-  import Record, only: [is_record: 2]
 
   @mysql_native_password "mysql_native_password"
 
@@ -24,7 +23,7 @@ defmodule Mariaex.Protocol do
                  @client_connect_with_db, @client_multi_statements, @client_multi_results,
                  @protocol_41, @secure_connection, @client_deprecate_eof]
 
-  def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = packet, %{state: :handshake, opts: opts} = s) do
+  def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = _packet, %{state: :handshake, opts: opts} = s) do
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
     password = opts[:password]
     scramble = case password do
@@ -39,18 +38,15 @@ defmodule Mariaex.Protocol do
     %{ s | state: :handshake_send }
   end
 
-  def dispatch(packet(msg: msg), state = %{queue: queue, state: :handshake_send}) do
-    {_, state} = Connection.reply(:ok, state)
-    %{ state | state: :running }
-  end
-
-  def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{queue: queue, statement: statement, state: :query_send}) do
+  def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{state: s})
+   when s in [:handshake_send, :query_send] do
     error = %Mariaex.Error{mariadb: %{code: code, message: message}}
     {_, state} = Connection.reply({:error, error}, state)
     %{ state | state: :running }
   end
 
-  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows)), state = %{queue: queue, statement: statement, state: :query_send}) do
+  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows)), state = %{statement: statement, state: s})
+   when s in [:handshake_send, :query_send] do
     result = case affected_rows do
                0 -> :ok
                _ -> {:ok, %Mariaex.Result{command: get_command(statement), columns: [], rows: [], num_rows: affected_rows}}
@@ -68,7 +64,7 @@ defmodule Mariaex.Protocol do
     %{ state | types: [{name, type} | acc] }
   end
 
-  def dispatch(packet(msg: eof_resp() = msg), state = %{types: definitions, state: :column_definitions}) do
+  def dispatch(packet(msg: eof_resp() = _msg), state = %{types: definitions, state: :column_definitions}) do
     %{ state | state: :rows, types: Enum.reverse(definitions) }
   end
 

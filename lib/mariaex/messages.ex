@@ -152,7 +152,7 @@ defmodule Mariaex.Messages do
     {packet(size: len, seqnum: seqnum, msg: decode_msg(body, state), body: body), rest}
   end
 
-  def decode(rest, state) do
+  def decode(rest, _state) do
     {nil, rest}
   end
 
@@ -176,9 +176,9 @@ defmodule Mariaex.Messages do
   def decode_date(data),      do: :io_lib.fread('~d-~d-~d', to_char_list(data)) |> elem(1) |> List.to_tuple
   def decode_time(data),      do: :io_lib.fread('~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple
   def decode_timestamp(data)  do
-    :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data)) 
-    |> elem(1) 
-    |> Enum.split(3) 
+    :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data))
+    |> elem(1)
+    |> Enum.split(3)
     |> Tuple.to_list
     |> Enum.map(&List.to_tuple(&1))
     |> List.to_tuple

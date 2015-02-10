@@ -56,12 +56,15 @@ defmodule Mariaex.Connection do
       |> Dict.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
       |> Dict.put_new(:password, System.get_env("MDBPASSWORD"))
       |> Dict.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
-    case GenServer.start_link(__MODULE__, [sock_mod]) do
+    case GenServer.start(__MODULE__, [sock_mod]) do
       {:ok, pid} ->
         timeout = opts[:connect_timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
-          :ok -> {:ok, pid}
-          err -> {:error, err}
+          :ok ->
+            Process.link(pid)
+            {:ok, pid}
+          err ->
+            err
         end
       err -> err
     end
@@ -188,9 +191,9 @@ defmodule Mariaex.Connection do
   end
 
   def handle_info({:tcp_closed, _}, s) do
-    {:stop, %Mariaex.Error{message: "connection closed"}, s}
+    error(%Mariaex.Error{message: "connection closed"}, s)
   end
-  def handle_info(sock_message, %{sock: {sock_mod, sock}, tail: tail} = s) do
+  def handle_info(sock_message, %{sock: {sock_mod, sock}} = s) do
     new_s = sock_mod.receive(sock, sock_message) |> process(s)
     sock_mod.next(sock)
     {:noreply, new_s}
@@ -205,7 +208,7 @@ defmodule Mariaex.Connection do
     end
   end
 
-  defp command({:query, statement, _params, opts}, s) do
+  defp command({:query, statement, _params, _opts}, s) do
     Protocol.send_query(statement, s)
   end
 
@@ -229,18 +232,22 @@ defmodule Mariaex.Connection do
 
   def reply(reply, %{queue: queue} = state) do
     case :queue.out(queue) do
-      {{:value, {_command, from, timer}}, queue} ->
-        unless timer == nil, do: :erlang.cancel_timer(timer)
-        GenServer.reply(from, reply)
+      {{:value, queue_entry}, queue} ->
+        reply(reply, queue_entry)
         {true, %{state | queue: queue}}
       {:empty, _queue} ->
         {false, state}
     end
   end
 
-  def reply(reply, {_, _} = from) do
+  def reply(reply, {_command, from, timer}) do
+    unless timer == nil, do: :erlang.cancel_timer(timer)
     GenServer.reply(from, reply)
-    true
+  end
+
+  def error(error, state) do
+    reply(error, state)
+    {:stop, error, state}
   end
 
 end
