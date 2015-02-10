@@ -173,9 +173,16 @@ defmodule Mariaex.Messages do
   def decode_float(data),     do: Float.parse(data) |> elem(0)
   def decode_integer(data),   do: Integer.parse(data) |> elem(0)
   def decode_bit(<<bit>>),    do: bit
-  def decode_date(data),      do: {:date, :io_lib.fread('~d-~d-~d', to_char_list(data)) |> elem(1) |> List.to_tuple}
-  def decode_time(data),      do: {:time, :io_lib.fread('~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple}
-  def decode_timestamp(data), do: :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple
+  def decode_date(data),      do: :io_lib.fread('~d-~d-~d', to_char_list(data)) |> elem(1) |> List.to_tuple
+  def decode_time(data),      do: :io_lib.fread('~d:~d:~d', to_char_list(data)) |> elem(1) |> List.to_tuple
+  def decode_timestamp(data)  do
+    :io_lib.fread('~d-~d-~d ~d:~d:~d', to_char_list(data)) 
+    |> elem(1) 
+    |> Enum.split(3) 
+    |> Tuple.to_list
+    |> Enum.map(&List.to_tuple(&1))
+    |> List.to_tuple
+  end
 
   def encode_msg(rec), do: __encode__(rec)
 
