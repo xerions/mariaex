@@ -169,7 +169,7 @@ defmodule Mariaex.Connection do
         s = %{s | opts: opts, state: :handshake, sock: {sock_mod, sock}, queue: queue}
         {:noreply, s}
       {:error, reason} ->
-        {:stop, :normal, %Mariaex.Error{message: "tcp connect: #{reason}"}, s}
+        {:stop, :normal, {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}, s}
     end
   end
 

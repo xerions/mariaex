@@ -7,6 +7,8 @@ defmodule StartTest do
       Mariaex.Connection.start_link(username: "root", database: "non_existing")
     assert {:error, %Mariaex.Error{mariadb: %{message: "Access denied for user " <> _}}} =
       Mariaex.Connection.start_link(username: "non_existing", database: "mariaex_test")
+    assert {:error, %Mariaex.Error{message: "tcp connect: econnrefused"}} =
+      Mariaex.Connection.start_link(username: "root", database: "mariaex_test", port: 60999)
   end
 
 end
