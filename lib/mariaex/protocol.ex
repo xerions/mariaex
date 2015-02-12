@@ -92,7 +92,9 @@ defmodule Mariaex.Protocol do
     |> bxor_binary(stage1)
   end
 
-  defp bxor_binary(b1, b2), do: (for {e1, e2} <- List.zip([to_char_list(b1), to_char_list(b2)]), do: e1 ^^^ e2) |> to_string
+  defp bxor_binary(b1, b2) do
+    (for {e1, e2} <- List.zip([:erlang.binary_to_list(b1), :erlang.binary_to_list(b2)]), do: e1 ^^^ e2) |> :erlang.list_to_binary
+  end
 
   defp msg_send(msg, %{sock: {sock_mod, sock}}, seqnum), do: msg_send(msg, {sock_mod, sock}, seqnum)
 
