@@ -85,7 +85,7 @@ defmodule Mariaex.Connection do
   @doc """
   Runs an (extended) query and returns the result as `{:ok, %Mariaex.Result{}}`
   or `{:error, %Mariaex.Error{}}` if there was an error. Parameters can be
-  set in the query as `$1` embedded in the query string. Parameters are given as
+  set in the query as `?` embedded in the query string. Parameters are given as
   a list of elixir values. See the README for information on how Mariaex
   encodes and decodes elixir values by default. See `Mariaex.Result` for the
   result data.
@@ -109,9 +109,9 @@ defmodule Mariaex.Connection do
 
       Mariaex.Connection.query(pid, "SELECT title FROM posts", [])
 
-      Mariaex.Connection.query(pid, "SELECT id FROM posts WHERE title like $1", ["%my%"])
+      Mariaex.Connection.query(pid, "SELECT id FROM posts WHERE title like ?", ["%my%"])
 
-      Mariaex.Connection.query(pid, "SELECT $1 || $2", ["4", "2"],
+      Mariaex.Connection.query(pid, "SELECT ? || ?", ["4", "2"],
                                 param_types: ["text", "text"], result_types: ["text"])
 
   """
