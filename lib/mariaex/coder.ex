@@ -202,7 +202,6 @@ defmodule Mariaex.Coder do
       end
     end
 
-
     def length_encoded_integer(bin) do
       case bin do
         << value :: 8, rest :: binary >> when value <= 250 -> {value, rest}
@@ -212,6 +211,14 @@ defmodule Mariaex.Coder do
       end
     end
 
+    def to_length_encoded_integer(int) do
+      case int do
+        int when int <= 250 -> << int :: 8 >>
+        int when int <= 65535 -> << 252 :: 8, int :: 16-little >>
+        int when int <= 16777215 -> << 253 :: 8, int :: 24-little >>
+        int -> << 254 :: 8, int :: 64-little >>
+      end
+    end
   end
 
 end

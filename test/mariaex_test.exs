@@ -9,6 +9,7 @@ defmodule MariaexTest do
   end
 
   test "decode basic types", context do
+    assert [{nil}] = query("SELECT null", [])
     assert [{1,0}] = query("SELECT true, false", [])
     assert [{"mo"}] = query("SELECT 'mo'", [])
     assert [{"mø"}] = query("SELECT 'mø'", [])
@@ -60,7 +61,7 @@ defmodule MariaexTest do
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
-    [] = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
+    :ok = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
     [{27, "foobar"}] = query("SELECT * FROM test", [])
   end
 
@@ -68,4 +69,12 @@ defmodule MariaexTest do
     assert %Mariaex.Error{} = query("wat", [])
     assert [{"syntax"}] = query("SELECT 'syntax'", [])
   end
+
+  test "prepared_statements", context do
+    assert :ok = query("CREATE TABLE test_statements (id int, text text)", [])
+    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
+    assert [{1, "test1"}, {2, "test2"}] = query("SELECT id, text FROM test_statements WHERE id > ?", [0])
+  end
+
 end

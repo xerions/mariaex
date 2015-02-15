@@ -45,7 +45,6 @@ defmodule Mariaex.TestHelper do
     quote do
       case Mariaex.Connection.query(var!(context)[:pid], unquote(stat),
                                      unquote(params), unquote(opts)) do
-        :ok -> :ok
         {:ok, %Mariaex.Result{rows: nil}} -> :ok
         {:ok, %Mariaex.Result{rows: rows}} -> rows
         {:error, %Mariaex.Error{} = err} -> err

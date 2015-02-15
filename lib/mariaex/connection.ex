@@ -60,7 +60,7 @@ defmodule Mariaex.Connection do
       {:ok, pid} ->
         timeout = opts[:connect_timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
-          :ok ->
+          {:ok, _} ->
             Process.link(pid)
             {:ok, pid}
           err ->
@@ -105,7 +105,7 @@ defmodule Mariaex.Connection do
 
       Mariaex.Connection.query(pid, "CREATE TABLE posts (id serial, title text)")
 
-      Mariaex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')", [])
+      Mariaex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')")
 
       Mariaex.Connection.query(pid, "SELECT title FROM posts", [])
 
@@ -135,9 +135,9 @@ defmodule Mariaex.Connection do
 
   @doc false
   def init([sock_mod]) do
-    {:ok, %{sock: nil, tail: "", state: :ready, parameters: %{}, backend_key: nil,
-            sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil,
-            types: nil, queue: :queue.new, opts: nil}}
+    {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
+            backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil,
+            parameter_types: nil, types: nil, queue: :queue.new, opts: nil, statement_id: nil}}
   end
 
   @doc false
@@ -208,20 +208,12 @@ defmodule Mariaex.Connection do
     end
   end
 
-  defp command({:query, statement, _params, _opts}, s) do
-    Protocol.send_query(statement, s)
+  defp command({:query, statement, params, _opts}, s) do
+    Protocol.send_query(statement, params, s)
   end
 
-  @doc false
-  def new_query(statement, %{queue: queue} = s) do
-    command = {:query, statement, [], []}
-    {{:value, {_command, from, timer}}, queue} = :queue.out(queue)
-    queue = :queue.in_r({command, from, timer}, queue)
-    command(command, %{s | queue: queue})
-  end
-
-  defp process(blob, %{state: state, tail: tail} = s) do
-    case Messages.decode(tail <> blob, state) do
+  defp process(blob, %{state: state, substate: substate, tail: tail} = s) do
+    case Messages.decode(tail <> blob, substate || state) do
       {nil, tail} ->
         %{s | tail: tail}
       {packet, tail} ->
