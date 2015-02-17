@@ -79,7 +79,7 @@ defmodule Mariaex.Protocol do
     %{ state | state: :running, substate: nil }
   end
 
-  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params) = msg), state = %{statement: statement, state: :prepare_send}) do
+  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
     %{ state | substate: :column_definitions, state_data: {params > 0, columns > 0}, types: [], statement_id: id }
   end
 

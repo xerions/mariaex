@@ -37,7 +37,7 @@ defmodule Mariaex.Connection do
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
-    * `:connect_timeout` - Connect timeout in milliseconds (default: 5000);
+    * `:timeout` - Connect timeout in milliseconds (default: 5000);
 
   ## Function signatures
 
@@ -53,12 +53,12 @@ defmodule Mariaex.Connection do
     sock_type = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
     sock_mod = ("Elixir.Mariaex.Connection." <> sock_type) |> String.to_atom
     opts = opts
-      |> Dict.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
-      |> Dict.put_new(:password, System.get_env("MDBPASSWORD"))
-      |> Dict.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
+      |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
+      |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
+      |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
     case GenServer.start(__MODULE__, [sock_mod]) do
       {:ok, pid} ->
-        timeout = opts[:connect_timeout] || @timeout
+        timeout = opts[:timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
           {:ok, _} ->
             Process.link(pid)
@@ -151,21 +151,20 @@ defmodule Mariaex.Connection do
   end
 
   @doc false
-  def handle_call(:stop, from, s) do
-    reply(:ok, from)
-    {:stop, :normal, s}
+  def handle_call(:stop, _from, s) do
+    {:stop, :ok, :normal, s}
   end
 
   def handle_call({:connect, opts}, from, %{queue: queue, sock_mod: sock_mod} = s) do
     sock_type = opts[:sock_type] || :tcp
-    host      = opts[:hostname] || System.get_env("MDBHOST")
+    host      = Keyword.fetch!(opts, :hostname)
     host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 3306
-    timeout   = opts[:connect_timeout] || @timeout
+    timeout   = opts[:timeout] || @timeout
 
     case sock_mod.connect(host, port, timeout) do
       {:ok, sock} ->
-        queue = :queue.in({{:connect, opts}, from, nil}, queue)
+        queue = :queue.in({{:connect, opts}, from}, queue)
         s = %{s | opts: opts, state: :handshake, sock: {sock_mod, sock}, queue: queue}
         {:noreply, s}
       {:error, reason} ->
@@ -173,15 +172,8 @@ defmodule Mariaex.Connection do
     end
   end
 
-  def handle_call(command, from, %{state: state, queue: queue} = s) do
-    # Assume last element in tuple is the options
-    timeout = elem(command, tuple_size(command)-1)[:timeout] || @timeout
-
-    unless timeout == :infinity do
-      timer_ref = :erlang.start_timer(timeout, self(), :command)
-    end
-    queue = :queue.in({command, from, timer_ref}, queue)
-    s = %{s | queue: queue}
+  def handle_call(command, from, %{state: state} = s) do
+    s = update_in s.queue, &:queue.in({command, from}, &1)
 
     if state == :running do
       {:noreply, next(s)}
@@ -193,6 +185,7 @@ defmodule Mariaex.Connection do
   def handle_info({:tcp_closed, _}, s) do
     error(%Mariaex.Error{message: "connection closed"}, s)
   end
+
   def handle_info(sock_message, %{sock: {sock_mod, sock}} = s) do
     new_s = sock_mod.receive(sock, sock_message) |> process(s)
     sock_mod.next(sock)
@@ -201,7 +194,7 @@ defmodule Mariaex.Connection do
 
   def next(%{queue: queue} = s) do
     case :queue.out(queue) do
-      {{:value, {command, _from, _timer}}, _queue} ->
+      {{:value, {command, _from}}, _queue} ->
         command(command, s)
       {:empty, _queue} ->
         s
@@ -232,8 +225,7 @@ defmodule Mariaex.Connection do
     end
   end
 
-  def reply(reply, {_command, from, timer}) do
-    unless timer == nil, do: :erlang.cancel_timer(timer)
+  def reply(reply, {_command, from}) do
     GenServer.reply(from, reply)
   end
 
@@ -241,5 +233,4 @@ defmodule Mariaex.Connection do
     reply(error, state)
     {:stop, error, state}
   end
-
 end
