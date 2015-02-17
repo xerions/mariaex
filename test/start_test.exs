@@ -1,8 +1,7 @@
 defmodule StartTest do
   use ExUnit.Case, async: true
-  import Mariaex.TestHelper
 
-  test "connection_errors", context do
+  test "connection_errors" do
     assert {:error, %Mariaex.Error{mariadb: %{message: "Unknown database 'non_existing'"}}} =
       Mariaex.Connection.start_link(username: "root", database: "non_existing")
     assert {:error, %Mariaex.Error{mariadb: %{message: "Access denied for user " <> _}}} =
@@ -10,5 +9,4 @@ defmodule StartTest do
     assert {:error, %Mariaex.Error{message: "tcp connect: econnrefused"}} =
       Mariaex.Connection.start_link(username: "root", database: "mariaex_test", port: 60999)
   end
-
 end
