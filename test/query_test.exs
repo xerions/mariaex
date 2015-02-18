@@ -1,4 +1,4 @@
-defmodule MariaexTest do
+defmodule QueryTest do
   use ExUnit.Case, async: true
   import Mariaex.TestHelper
 
@@ -40,6 +40,15 @@ defmodule MariaexTest do
     assert [{{{2013,12,21},{23,1,27}}}] = query("SELECT timestamp('2013-12-21 23:01:27 EST')", [])
   end
 
+  test "encode and decode dates", context do
+    date = {2010, 10, 17}
+    time = {19, 27, 30}
+
+    assert :ok = query("CREATE TABLE test_date_encoding (id int, date date, timestamp timestamp)", [])
+    assert :ok = query("INSERT INTO test_date_encoding (date, timestamp) VALUES(?, ?)", [{date}, {date, time}])
+
+    assert [{date, {date, time}}] = query("SELECT date, timestamp FROM test_date_encoding", [])
+  end
 
   test "non data statement", context do
     assert :ok = query("BEGIN", [])
@@ -76,5 +85,4 @@ defmodule MariaexTest do
     assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
     assert [{1, "test1"}, {2, "test2"}] = query("SELECT id, text FROM test_statements WHERE id > ?", [0])
   end
-
 end
