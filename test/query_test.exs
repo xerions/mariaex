@@ -8,46 +8,67 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
+  test "encode and decode dates", context do
+    date = {2010, 10, 17}
+    time = {19, 27, 30}
+    datetime = {date, time}
+    assert [{date, datetime}] =  query("SELECT date(?), timestamp(?)", [date, datetime])
+    assert [time] =  query("SELECT time(?)", [time])
+  end
+
   test "decode basic types", context do
     assert [{nil}] = query("SELECT null", [])
     assert [{1,0}] = query("SELECT true, false", [])
     assert [{"mo"}] = query("SELECT 'mo'", [])
     assert [{"mø"}] = query("SELECT 'mø'", [])
-    assert [{{{2013,12,21},{23,1,27}}}] = query("SELECT timestamp('2013-12-21 23:01:27')", [])
-    assert [{{2013,12,21}}] = query("SELECT date('2013-12-21 23:01:27')", [])
-    assert [{{23,1,27}}] = query("SELECT time('2013-12-21 23:01:27')", [])
     assert [{51.0}] = query("select 51.0", [])
     assert [{0.012321421121421}] = query("select 00.012321421121421", [])
     assert [{100000000.27}] = query("select 100000000.27", [])
   end
 
   test "decode time", context do
-    assert [{{0,0,0}}] = query("SELECT time('00:00:00')", [])
-    #    assert [{{:time, {3,1,7}}}] = query("SELECT time('03:01:07')", [])
-    assert [{{23,10,27}}] = query("SELECT time('23:10:27')", [])
-    #    assert [{{:time, {2,1,2}}}] = query("SELECT time('02:01:02 EST')", [])
+    assert [{{0, 0, 0}}] = query("SELECT time('00:00:00')", [])
+    assert [{{3, 1, 7}}] = query("SELECT time('03:01:07')", [])
+    assert [{{23, 10, 27}}] = query("SELECT time('23:10:27')", [])
+    #    assert [{{2,1,2}}] = query("SELECT time('02:01:02 EST')", [])
   end
 
   test "decode date", context do
-    assert [{{1,1,1}}] = query("SELECT date('0001-01-01')", [])
-    assert [{{1,2,3}}] = query("SELECT date('0001-02-03')", [])
-    assert [{{2013,12,21}}] = query("SELECT date('2013-12-21')", [])
+    assert [{{1, 1, 1}}] = query("SELECT date('0001-01-01')", [])
+    assert [{{1, 2, 3}}] = query("SELECT date('0001-02-03')", [])
+    assert [{{2013, 12, 21}}] = query("SELECT date('2013-12-21')", [])
   end
 
   test "decode timestamp", context do
-    assert [{{{1,1,1},{0,0,0}}}] = query("SELECT timestamp('0001-01-01 00:00:00')", [])
-    assert [{{{2013,12,21},{23,1,27}}}] = query("SELECT timestamp('2013-12-21 23:01:27')", [])
-    assert [{{{2013,12,21},{23,1,27}}}] = query("SELECT timestamp('2013-12-21 23:01:27 EST')", [])
+    assert [{{{1, 1, 1}, {0, 0, 0}}}] = query("SELECT timestamp('0001-01-01 00:00:00')", [])
+    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27')", [])
+    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27 EST')", [])
   end
 
-  test "encode and decode dates", context do
-    date = {2010, 10, 17}
-    time = {19, 27, 30}
+  test "encode basic types", context do
+    assert [{nil}] = query("SELECT null", [])
+    assert [{1,0}] = query("SELECT true, false", [])
+    assert [{"mo"}] = query("SELECT 'mo'", [])
+    assert [{"mø"}] = query("SELECT 'mø'", [])
+    assert [{51.0}] = query("select 51.0", [])
+    #    assert [{0.012321421121421}] = query("select ?", [0.012321421121421])
+    #    assert [{100000000.27}] = query("select ?", [100000000.27])
+  end
 
-    assert :ok = query("CREATE TABLE test_date_encoding (id int, date date, timestamp timestamp)", [])
-    assert :ok = query("INSERT INTO test_date_encoding (date, timestamp) VALUES(?, ?)", [{date}, {date, time}])
+  test "encode time", context do
+    assert [{{1, 0, 0}}] = query("SELECT time(?)", [{1, 0, 0}])
+    assert [{{3, 1, 7}}] = query("SELECT time(?)", [{3, 1, 7}])
+    assert [{{23, 10, 27}}] = query("SELECT time(?)", [{23, 10, 27}])
+  end
 
-    assert [{date, {date, time}}] = query("SELECT date, timestamp FROM test_date_encoding", [])
+  test "encode date", context do
+    assert [{{2221, 1, 1}}] = query("SELECT date(?)", [{2221, 1, 1}])
+    assert [{{2013, 12, 21}}] = query("SELECT date(?)", [{2013, 12, 21}])
+  end
+  
+  test "encode timestamp", context do
+    assert [{{{1, 1, 1}, {1, 0, 0}}}] = query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0}}])
+    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27}}])
   end
 
   test "non data statement", context do
