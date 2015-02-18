@@ -227,6 +227,11 @@ defmodule Mariaex.Messages do
     do: {0, :field_type_longlong, << int :: 64-little >>}
   def encode_param(float) when is_float(float),
     do: {0, :field_type_newdecimal, << float :: 64-little-float >>}
+  def encode_param({{year, month, day}}),
+    do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
+  def encode_param({{year, month, day}, {hour, min, sec}}),
+    do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little,
+      hour::8-little, min::8-little, sec::8-little>>}
 
   def encode_msg(rec = stmt_execute(parameters: parameters, )) do
     bin = parameters_to_binary(parameters)
