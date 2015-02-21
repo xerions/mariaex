@@ -211,7 +211,7 @@ defmodule Mariaex.Connection do
         %{s | tail: tail}
       {packet, tail} ->
         new_s = Protocol.dispatch(packet, s)
-        process(tail, new_s)
+        process(tail, %{new_s | tail: ""})
     end
   end
 
