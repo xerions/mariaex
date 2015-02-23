@@ -73,7 +73,7 @@ defmodule Mariaex.Protocol do
   def dispatch(packet(msg: ok_resp(affected_rows: affected_rows)), state = %{statement: statement, state: s})
    when s in [:handshake_send, :query_send, :execute_send] do
     command = get_command(statement)
-    rows = if (command in [:create, :insert, :begin, :commit, :rollback]) do nil else [] end
+    rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows}}
     {_, state} = Connection.reply(result, state)
     %{ state | state: :running, substate: nil }
