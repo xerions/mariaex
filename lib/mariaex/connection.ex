@@ -7,7 +7,7 @@ defmodule Mariaex.Connection do
   alias Mariaex.Protocol
   alias Mariaex.Messages
 
-  @timeout 5000 #:infinity
+  @timeout 5000
 
   defmacrop raiser(result) do
     quote do
