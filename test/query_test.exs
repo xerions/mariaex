@@ -51,6 +51,14 @@ defmodule QueryTest do
     [{nil}] = query("SELECT null", [])
   end
 
+  test "encode and decode decimals", context do
+    decimal = Decimal.new("12.98")
+    table   = "test_decimals"
+    :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [decimal])
+    [{^decimal}] = query("SELECT cost FROM #{table}", [])
+  end
+
   test "encode and decode dates", context do
     date = {2010, 10, 17}
     time = {19, 27, 30}
