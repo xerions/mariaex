@@ -18,7 +18,7 @@ defmodule Mariaex.Mixfile do
   end
 
   defp deps do
-    []
+    [{:decimal, "~> 1.0"}]
   end
 
   defp description do
