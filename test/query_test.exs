@@ -16,9 +16,16 @@ defmodule QueryTest do
     assert [time] =  query("SELECT time(?)", [time])
   end
 
+  test "encode and decode boolean", context do
+    table = "test_booleans"
+    :ok = query("CREATE TABLE #{table} (id int, active boolean)", [])
+    :ok = query("INSERT INTO #{table} (id, active) VALUES (?, ?)", [1, true])
+    :ok = query("INSERT INTO #{table} (id, active) VALUES (?, ?)", [2, false])
+    [{1, true}, {2, false}] = query("SELECT id, active FROM #{table}", [])
+  end
+
   test "decode basic types", context do
     assert [{nil}] = query("SELECT null", [])
-    assert [{1,0}] = query("SELECT true, false", [])
     assert [{"mo"}] = query("SELECT 'mo'", [])
     assert [{"mø"}] = query("SELECT 'mø'", [])
     assert [{51.0}] = query("select 51.0", [])
@@ -47,7 +54,6 @@ defmodule QueryTest do
 
   test "encode basic types", context do
     assert [{nil}] = query("SELECT null", [])
-    assert [{1,0}] = query("SELECT true, false", [])
     assert [{"mo"}] = query("SELECT 'mo'", [])
     assert [{"mø"}] = query("SELECT 'mø'", [])
     assert [{51.0}] = query("select 51.0", [])
@@ -65,7 +71,7 @@ defmodule QueryTest do
     assert [{{2221, 1, 1}}] = query("SELECT date(?)", [{2221, 1, 1}])
     assert [{{2013, 12, 21}}] = query("SELECT date(?)", [{2013, 12, 21}])
   end
-  
+
   test "encode timestamp", context do
     assert [{{{1, 1, 1}, {1, 0, 0}}}] = query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0}}])
     assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27}}])

@@ -35,14 +35,15 @@ defmodule Mariaex.Messages do
     defmacro unquote(command)(), do: unquote(number)
   end
 
-  @types [float:
+  @types [boolean:
+           [field_type_tiny: 0x01],
+          float:
            [field_type_decimal: 0x00,
             field_type_float: 0x04,
             field_type_double: 0x05,
             field_type_newdecimal: 0xf6],
           integer:
-           [field_type_tiny: 0x01,
-            field_type_short: 0x02,
+           [field_type_short: 0x02,
             field_type_long: 0x03,
             field_type_int24: 0x09,
             field_type_year: 0x0d,
@@ -180,7 +181,6 @@ defmodule Mariaex.Messages do
     _ 2
   end
 
-
   # Encoding
 
   def encode(msg, seqnum) do
@@ -190,7 +190,7 @@ defmodule Mariaex.Messages do
 
   defp encode_msg(rec = stmt_execute(parameters: params, )),
     do: stmt_execute(rec, parameters: parameters_to_binary(params), flags: 0, iteration_count: 1) |> __encode__()
-  defp encode_msg(rec), 
+  defp encode_msg(rec),
     do: __encode__(rec)
 
   defp parameters_to_binary([]), do: <<>>
@@ -207,14 +207,18 @@ defmodule Mariaex.Messages do
      << valuesbin :: binary, value :: binary >>}
   end
 
-  defp encode_param(nil),                        
+  defp encode_param(nil),
     do: {1, :field_type_null, ""}
-  defp encode_param(bin) when is_binary(bin),  
+  defp encode_param(bin) when is_binary(bin),
     do: {0, :field_type_blob, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
-  defp encode_param(int) when is_integer(int), 
+  defp encode_param(int) when is_integer(int),
     do: {0, :field_type_longlong, << int :: 64-little >>}
-  defp encode_param(float) when is_float(float), 
+  defp encode_param(float) when is_float(float),
     do: {0, :field_type_newdecimal, << float :: 64-little-float >>}
+  defp encode_param(true),
+    do: {0, :field_type_tiny, << 01 >>}
+  defp encode_param(false),
+    do: {0, :field_type_tiny, << 00 >>}
   defp encode_param({year, month, day}) when year >= 1000,
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
   defp encode_param({hour, min, sec}),
@@ -237,9 +241,9 @@ defmodule Mariaex.Messages do
 
   def decode(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, state),
     do: {packet(size: len, seqnum: seqnum, msg: decode_msg(body, state), body: body), rest}
-  def decode(rest, _state), 
+  def decode(rest, _state),
     do: {nil, rest}
- 
+
   defp decode_msg(body, :handshake),                                               do: __decode__(:handshake, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :bin_rows),                    do: __decode__(:bin_row, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :prepare_send),                do: __decode__(:stmt_prepare_ok, body)
@@ -255,15 +259,17 @@ defmodule Mariaex.Messages do
   defp decode_integer(data),   do: Integer.parse(data) |> elem(0)
   defp decode_bit(<<bit>>),    do: bit
   defp decode_null(_),         do: nil
+  defp decode_boolean("1"),    do: true
+  defp decode_boolean("0"),    do: false
 
-  defp decode_date(data) do 
-    String.split(data, "-") 
+  defp decode_date(data) do
+    String.split(data, "-")
     |> Enum.map(&String.to_integer/1)
     |> List.to_tuple
   end
 
   defp decode_time(data) do
-    String.split(data, ":") 
+    String.split(data, ":")
     |> Enum.map(&String.to_integer/1)
     |> List.to_tuple
   end
@@ -278,7 +284,7 @@ defmodule Mariaex.Messages do
     function = __type__(:decode, type)
     decode_type_row(rest_rows, rest_defs, [function.(elem) | acc])
   end
- 
+
   def decode_bin_rows(packet, fields) do
     nullbin_size = div(length(fields) + 7 + 2, 8)
     << 0 :: 8, nullbin :: size(nullbin_size)-binary, rest :: binary >> = packet
