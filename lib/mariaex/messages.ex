@@ -268,8 +268,8 @@ defmodule Mariaex.Messages do
   defp decode_msg(body, :rows),                                                    do: __decode__(:row, body)
 
   defp decode_string(data),    do: data
-  defp decode_float(data),     do: Float.parse(data) |> elem(0)
-  defp decode_integer(data),   do: Integer.parse(data) |> elem(0)
+  defp decode_float(data),     do: String.to_float(data)
+  defp decode_integer(data),   do: String.to_integer(data)
   defp decode_bit(<<bit>>),    do: bit
   defp decode_null(_),         do: nil
   defp decode_boolean("1"),    do: true
