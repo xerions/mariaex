@@ -58,11 +58,17 @@ defmodule QueryTest do
   end
 
   test "encode and decode decimals", context do
-    decimal = Decimal.new("12.98")
-    table   = "test_decimals"
+    table            = "test_decimals"
     :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
-    :ok = query("INSERT INTO #{table} (cost) values (?)", [decimal])
-    [{^decimal}] = query("SELECT cost FROM #{table}", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("12.93")])
+    assert [{Decimal.new("12.9300")}] == query("SELECT cost FROM #{table}", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("-164.9")])
+    assert [{Decimal.new("-164.9000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("16400")])
+    assert [{Decimal.new("16400.0000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
   end
 
   test "encode and decode dates", context do
