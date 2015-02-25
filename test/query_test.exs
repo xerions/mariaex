@@ -32,7 +32,7 @@ defmodule QueryTest do
 
     # Float
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
-    #[{^float}] = query("SELECT intensity from #{table} WHERE id = 3", [])
+    [{^float}] = query("SELECT intensity from #{table} WHERE id = 3", [])
 
     # String
     :ok = query("INSERT INTO #{table} (title) values (?)", [string])

@@ -216,7 +216,7 @@ defmodule Mariaex.Messages do
   defp encode_param(int) when is_integer(int),
     do: {0, :field_type_longlong, << int :: 64-little >>}
   defp encode_param(float) when is_float(float),
-    do: {0, :field_type_float, << float :: 64-little-float >>}
+    do: {0, :field_type_double, << float :: 64-little-float >>}
   defp encode_param(true),
     do: {0, :field_type_tiny, << 01 >>}
   defp encode_param(false),
