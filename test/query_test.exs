@@ -9,12 +9,14 @@ defmodule QueryTest do
   end
 
   test "support primitive data types", context do
-    integer  = 1
-    float    = 3.1415
-    string   = "Californication"
-    text     = "Some random text"
-    binary   = <<0,1>>
-    table    = "basic_types"
+    integer          = 1
+    negative_integer = -1
+    float            = 3.1415
+    negative_float   = -3.1415
+    string           = "Californication"
+    text             = "Some random text"
+    binary           = <<0,1>>
+    table            = "basic_types"
 
     sql = ~s{CREATE TABLE #{table} } <>
           ~s{(id serial, active boolean, count integer, intensity float, } <>
@@ -24,28 +26,32 @@ defmodule QueryTest do
 
     # Booleans
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
-    [{true}] = query("SELECT active from #{table} WHERE id = 1", [])
+    [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Integer
     :ok = query("INSERT INTO #{table} (count) values (?)", [integer])
-    [{^integer}] = query("SELECT count from #{table} WHERE id = 2", [])
+    [{^integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    :ok = query("INSERT INTO #{table} (count) values (?)", [negative_integer])
+    [{^negative_integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Float
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
-    [{^float}] = query("SELECT intensity from #{table} WHERE id = 3", [])
+    [{^float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    :ok = query("INSERT INTO #{table} (intensity) values (?)", [negative_float])
+    [{^negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # String
     :ok = query("INSERT INTO #{table} (title) values (?)", [string])
-    [{^string}] = query("SELECT title from #{table} WHERE id = 4", [])
+    [{^string}] = query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
     [{"mø"}] = query("SELECT 'mø'", [])
 
     # Text
     :ok = query("INSERT INTO #{table} (body) values (?)", [text])
-    [{^text}] = query("SELECT body from #{table} WHERE id = 5", [])
+    [{^text}] = query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Binary
     :ok = query("INSERT INTO #{table} (data) values (?)", [binary])
-    [{^binary}] = query("SELECT data from #{table} WHERE id = 6", [])
+    [{^binary}] = query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Nil
     [{nil}] = query("SELECT null", [])
