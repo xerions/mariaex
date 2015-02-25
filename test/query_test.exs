@@ -8,7 +8,41 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
-  test "support primitive data types", context do
+  test "support primitive data types by binary protocol", context do
+    integer = 1
+    float   = 3.1415
+    string  = "Californication"
+    text    = "Some random text"
+    binary  = <<0,1>>
+    decimal = Decimal.new("16.90")
+    table   = "basic_types_binary_protocol"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, active boolean, count integer, intensity float, } <>
+          ~s{title varchar(20), body text(20), data blob, value decimal(10,2))}
+
+    :ok = query(sql, [])
+    insert = ~s{INSERT INTO #{table} (active, count, intensity, title, body, data, value) } <>
+             ~s{VALUES (?, ?, ?, ?, ?, ?, ?)}
+    :ok = query(insert, [true, integer, float, string, text, binary, decimal])
+
+    # Boolean
+    [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
+
+    # Integer
+    [{^integer}] = query("SELECT count from #{table} WHERE id = ?", [1])
+
+    # String
+    [{^string}] = query("SELECT title from #{table} WHERE id = ?", [1])
+
+    # Text
+    [{^text}] = query("SELECT body from #{table} WHERE id = ?", [1])
+
+    # Binary
+    [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
+  end
+
+  test "support primitive data types by text protocol", context do
     integer          = 1
     negative_integer = -1
     float            = 3.1415
@@ -16,7 +50,7 @@ defmodule QueryTest do
     string           = "Californication"
     text             = "Some random text"
     binary           = <<0,1>>
-    table            = "basic_types"
+    table            = "basic_types_text_protocol"
 
     sql = ~s{CREATE TABLE #{table} } <>
           ~s{(id serial, active boolean, count integer, intensity float, } <>
@@ -24,7 +58,7 @@ defmodule QueryTest do
 
     :ok = query(sql, [])
 
-    # Booleans
+    # Boolean
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
     [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 

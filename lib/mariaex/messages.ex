@@ -320,14 +320,23 @@ defmodule Mariaex.Messages do
   end
 
   defp handle_decode_bin_rows({:string, _mysql_type}, packet),              do: length_encoded_string(packet)
-  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet),        do: parse_packet(packet, 8)
-  defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_packet(packet, 32)
-  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_packet(packet, 64)
+  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet),        do: parse_int_packet(packet, 8)
+  defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_int_packet(packet, 32)
+  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_int_packet(packet, 64)
   defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean(packet)
 
-  defp parse_packet(packet, size) do
+  defp parse_boolean(packet) do
+    << value, rest :: binary >> = packet
+    case value do
+      1 -> {true, rest}
+      0 -> {false, rest}
+    end
+  end
+
+  defp parse_int_packet(packet, size) do
     << value :: size(size)-little, rest :: binary >> = packet
     {value, rest}
   end
