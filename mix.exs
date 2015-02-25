@@ -14,11 +14,11 @@ defmodule Mariaex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger]]
+    [applications: [:logger, :decimal]]
   end
 
   defp deps do
-    []
+    [{:decimal, "~> 1.0"}]
   end
 
   defp description do

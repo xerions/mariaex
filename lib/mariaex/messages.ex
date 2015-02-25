@@ -4,6 +4,7 @@ defmodule Mariaex.Messages do
   import Record, only: [defrecord: 2]
   import Mariaex.Coder.Utils
   use Mariaex.Coder
+  require Decimal
 
   @protocol_vsn_major 3
   @protocol_vsn_minor 0
@@ -38,10 +39,11 @@ defmodule Mariaex.Messages do
   @types [boolean:
            [field_type_tiny: 0x01],
           float:
-           [field_type_decimal: 0x00,
-            field_type_float: 0x04,
-            field_type_double: 0x05,
-            field_type_newdecimal: 0xf6],
+           [field_type_float: 0x04,
+            field_type_double: 0x05],
+          decimal:
+          [field_type_decimal: 0x00,
+           field_type_newdecimal: 0xf6],
           integer:
            [field_type_short: 0x02,
             field_type_long: 0x03,
@@ -214,11 +216,15 @@ defmodule Mariaex.Messages do
   defp encode_param(int) when is_integer(int),
     do: {0, :field_type_longlong, << int :: 64-little >>}
   defp encode_param(float) when is_float(float),
-    do: {0, :field_type_newdecimal, << float :: 64-little-float >>}
+    do: {0, :field_type_double, << float :: 64-little-float >>}
   defp encode_param(true),
     do: {0, :field_type_tiny, << 01 >>}
   defp encode_param(false),
     do: {0, :field_type_tiny, << 00 >>}
+  defp encode_param(%Decimal{} = value) do
+    bin = Decimal.to_string(value, :normal)
+    {0, :field_type_newdecimal, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  end
   defp encode_param({year, month, day}) when year >= 1000,
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
   defp encode_param({hour, min, sec}),
@@ -261,6 +267,10 @@ defmodule Mariaex.Messages do
   defp decode_null(_),         do: nil
   defp decode_boolean("1"),    do: true
   defp decode_boolean("0"),    do: false
+
+  defp decode_decimal(data) do
+    Decimal.new(data)
+  end
 
   defp decode_date(data) do
     String.split(data, "-")

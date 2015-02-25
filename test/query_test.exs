@@ -8,6 +8,69 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
+  test "support primitive data types", context do
+    integer          = 1
+    negative_integer = -1
+    float            = 3.1415
+    negative_float   = -3.1415
+    string           = "Californication"
+    text             = "Some random text"
+    binary           = <<0,1>>
+    table            = "basic_types"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, active boolean, count integer, intensity float, } <>
+          ~s{title varchar(20), body text(20), data blob)}
+
+    :ok = query(sql, [])
+
+    # Booleans
+    :ok = query("INSERT INTO #{table} (active) values (?)", [true])
+    [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    # Integer
+    :ok = query("INSERT INTO #{table} (count) values (?)", [integer])
+    [{^integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    :ok = query("INSERT INTO #{table} (count) values (?)", [negative_integer])
+    [{^negative_integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    # Float
+    :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
+    [{^float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    :ok = query("INSERT INTO #{table} (intensity) values (?)", [negative_float])
+    [{^negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    # String
+    :ok = query("INSERT INTO #{table} (title) values (?)", [string])
+    [{^string}] = query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
+    [{"mø"}] = query("SELECT 'mø'", [])
+
+    # Text
+    :ok = query("INSERT INTO #{table} (body) values (?)", [text])
+    [{^text}] = query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    # Binary
+    :ok = query("INSERT INTO #{table} (data) values (?)", [binary])
+    [{^binary}] = query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    # Nil
+    [{nil}] = query("SELECT null", [])
+  end
+
+  test "encode and decode decimals", context do
+    table            = "test_decimals"
+    :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("12.93")])
+    assert [{Decimal.new("12.9300")}] == query("SELECT cost FROM #{table}", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("-164.9")])
+    assert [{Decimal.new("-164.9000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
+
+    :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("16400")])
+    assert [{Decimal.new("16400.0000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
+  end
+
   test "encode and decode dates", context do
     date = {2010, 10, 17}
     time = {19, 27, 30}
@@ -16,28 +79,10 @@ defmodule QueryTest do
     assert [time] =  query("SELECT time(?)", [time])
   end
 
-  test "encode and decode boolean", context do
-    table = "test_booleans"
-    :ok = query("CREATE TABLE #{table} (id int, active boolean)", [])
-    :ok = query("INSERT INTO #{table} (id, active) VALUES (?, ?)", [1, true])
-    :ok = query("INSERT INTO #{table} (id, active) VALUES (?, ?)", [2, false])
-    [{1, true}, {2, false}] = query("SELECT id, active FROM #{table}", [])
-  end
-
-  test "decode basic types", context do
-    assert [{nil}] = query("SELECT null", [])
-    assert [{"mo"}] = query("SELECT 'mo'", [])
-    assert [{"mø"}] = query("SELECT 'mø'", [])
-    assert [{51.0}] = query("select 51.0", [])
-    assert [{0.012321421121421}] = query("select 00.012321421121421", [])
-    assert [{100000000.27}] = query("select 100000000.27", [])
-  end
-
   test "decode time", context do
     assert [{{0, 0, 0}}] = query("SELECT time('00:00:00')", [])
     assert [{{3, 1, 7}}] = query("SELECT time('03:01:07')", [])
     assert [{{23, 10, 27}}] = query("SELECT time('23:10:27')", [])
-    #    assert [{{2,1,2}}] = query("SELECT time('02:01:02 EST')", [])
   end
 
   test "decode date", context do
@@ -50,15 +95,6 @@ defmodule QueryTest do
     assert [{{{1, 1, 1}, {0, 0, 0}}}] = query("SELECT timestamp('0001-01-01 00:00:00')", [])
     assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27')", [])
     assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27 EST')", [])
-  end
-
-  test "encode basic types", context do
-    assert [{nil}] = query("SELECT null", [])
-    assert [{"mo"}] = query("SELECT 'mo'", [])
-    assert [{"mø"}] = query("SELECT 'mø'", [])
-    assert [{51.0}] = query("select 51.0", [])
-    #    assert [{0.012321421121421}] = query("select ?", [0.012321421121421])
-    #    assert [{100000000.27}] = query("select ?", [100000000.27])
   end
 
   test "encode time", context do

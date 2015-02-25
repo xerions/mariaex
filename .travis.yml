@@ -7,6 +7,8 @@ before_install:
   - unzip -d elixir v1.0.0.zip
 before_script:
   - export PATH=`pwd`/elixir/bin:$PATH
+  - mix local.hex --force
+  - mix deps.get
 script:
   - mix test
 notifications:
