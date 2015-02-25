@@ -142,9 +142,25 @@ defmodule Mariaex.Protocol do
   end
 
   defp send_execute(s = %{statement_id: id, parameters: parameters, parameter_types: types}) do
-    parameters = Enum.zip(types, parameters)
-    msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
-    %{ s | state: :execute_send, substate: :column_count }
+    if is_list(types) and length(parameters) == length(types) do
+      parameters = Enum.zip(types, parameters)
+      try do
+        msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
+        %{ s | state: :execute_send, substate: :column_count }
+      catch
+        :throw, :encoder_error ->
+          abort_statement(s, "query has invalid parameters")
+      end
+    else
+      abort_statement(s, "query has invalid number of parameters")
+    end
+  end
+
+  defp abort_statement(s = %{statement_id: id}, error_msg) do
+    error = %Mariaex.Error{message: error_msg}
+    {_, s} = Connection.reply({:error, error}, s)
+    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+    %{ s | state: :running, substate: nil}
   end
 
   defp get_command(statement) when is_binary(statement) do

@@ -155,6 +155,11 @@ defmodule Mariaex.Messages do
     parameters :string_eof
   end
 
+  defcoder :stmt_close do
+    command 1
+    statement_id 4
+  end
+
   defcoder :column_count do
     column_count :length_encoded_integer
   end
@@ -231,6 +236,8 @@ defmodule Mariaex.Messages do
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
   defp encode_param({{year, month, day}, {hour, min, sec}}),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
+  defp encode_param(_else),
+    do: throw(:encoder_error)
 
   defp null_map_to_mysql(<< byte :: 8-bits, rest :: bits >>, acc) do
     << a :: 1, b :: 1, c :: 1, d :: 1, e :: 1, f :: 1, g :: 1, h :: 1 >> = byte

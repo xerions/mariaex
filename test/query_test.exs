@@ -148,4 +148,9 @@ defmodule QueryTest do
     assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
     assert [{1, "test1"}, {2, "test2"}] = query("SELECT id, text FROM test_statements WHERE id > ?", [0])
   end
+
+  test "encoding bad parameters", context do
+    assert %Mariaex.Error{message: "query has invalid number of parameters"} = query("SELECT 1", [:badparam])
+    assert %Mariaex.Error{message: "query has invalid parameters"} = query("SELECT ?", [:badparam])
+  end
 end
