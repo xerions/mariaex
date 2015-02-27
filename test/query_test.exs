@@ -112,6 +112,47 @@ defmodule QueryTest do
     [{nil}] = query("SELECT null", [])
   end
 
+  test "encode and decode nils", context do
+    double  = 3.1415
+    decimal = Decimal.new("18.93")
+    table   = "encoding_and_decoding_nils"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, count integer, accuracy double, value decimal(10, 2))}
+
+    :ok = query(sql, [])
+    insert = ~s{INSERT INTO #{table} (count, accuracy, value) } <>
+             ~s{VALUES (?, ?, ?)}
+
+    :ok = query(insert, [nil, double, decimal])
+    [{nil}] = query("SELECT count from #{table} WHERE id = ?", [1])
+
+    :ok = query(insert, [nil, double, nil])
+    [{nil, ^double, nil}] = query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2])
+  end
+
+  test "encode and decode nils with more than 8 columns", context do
+    table = "encoding_and_decoding_multiple_columns"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, count_1 integer, count_2 integer, count_3 integer, count_4 integer, } <>
+          ~s{count_5 integer, count_6 integer, count_7 integer, count_8 integer, } <>
+          ~s{count_9 integer, count_10 integer)}
+
+
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (count_1, count_2, count_3, count_4, count_5, } <>
+             ~s{count_6, count_7, count_8, count_9, count_10) } <>
+             ~s{VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)}
+
+    values = [1, nil, 3, 4, nil, 6, nil, 8, nil, 10]
+    result = {1, 1, nil, 3, 4, nil, 6, nil, 8, nil, 10}
+
+    :ok = query(insert, values)
+    [^result] = query("SELECT * FROM #{table}", [])
+  end
+
   test "encode and decode decimals", context do
     table            = "test_decimals"
     :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
@@ -188,8 +229,21 @@ defmodule QueryTest do
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
+
     :ok = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
     [{27, "foobar"}] = query("SELECT * FROM test", [])
+
+    # Text protocol
+    :ok = query("INSERT INTO test VALUES (?, ?)", [28, nil], [])
+    [{28, nil}] = query("SELECT * FROM test where id = 28", [])
+
+    # Binary protocol
+    :ok = query("INSERT INTO test VALUES (29, NULL)", [], [])
+    [{29, nil}] = query("SELECT * FROM test where id = 29", [])
+
+    # Inserting without specifying a column
+    :ok = query("INSERT INTO test (id) VALUES (30)", [], [])
+    [{30, nil}] = query("SELECT * FROM test where id = 30", [])
   end
 
   test "connection works after failure", context do

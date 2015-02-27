@@ -71,10 +71,12 @@ defmodule Mariaex.Messages do
            [field_type_null: 0x06]
          ]
 
+  def __type__(:decode, _type, nil), do: nil
+
   for {type, list}  <- @types,
       {_name, id}   <- list   do
-    function_name = "decode_#{type}" |> String.to_atom
-    def __type__(:decode, unquote(id)), do: fn(data) -> unquote(function_name)(data) end
+    function_name = :"decode_#{type}"
+    def __type__(:decode, unquote(id), elem), do: unquote(function_name)(elem)
   end
   for {_type, list} <- @types,
       {name, id}    <- list   do
@@ -239,16 +241,18 @@ defmodule Mariaex.Messages do
   defp encode_param(_else),
     do: throw(:encoder_error)
 
-  defp null_map_to_mysql(<< byte :: 8-bits, rest :: bits >>, acc) do
-    << a :: 1, b :: 1, c :: 1, d :: 1, e :: 1, f :: 1, g :: 1, h :: 1 >> = byte
-    null_map_to_mysql(rest, << acc :: binary, h :: 1, g :: 1, f :: 1, e :: 1, d :: 1, c :: 1, b :: 1, a :: 1 >>)
+  defp null_map_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do
+    null_map_to_mysql(rest, << acc :: bytes, reverse_bits(byte, "") :: bytes >>)
   end
   defp null_map_to_mysql(bits, acc) do
     padding = 8 - bit_size(bits)
-    bitslist = for << b :: 1 <- bits >>, do: b
-    reversebits = for b <- bitslist, into: <<>>, do: << b :: 1 >>
-    << acc :: binary, 0 :: size(padding), reversebits :: bits >>
+    << acc :: binary, 0 :: size(padding), reverse_bits(bits, "") :: bits >>
   end
+
+  defp reverse_bits(<<>>, acc),
+    do: acc
+  defp reverse_bits(<<h::1, t::bits>>, acc),
+    do: reverse_bits(t, <<h::1, acc::bits>>)
 
   # Decoding
 
@@ -298,8 +302,7 @@ defmodule Mariaex.Messages do
 
   def decode_type_row([], [], acc), do: acc |> Enum.reverse |> List.to_tuple
   def decode_type_row([elem | rest_rows], [{_name, type} | rest_defs], acc) do
-    function = __type__(:decode, type)
-    decode_type_row(rest_rows, rest_defs, [function.(elem) | acc])
+    decode_type_row(rest_rows, rest_defs, [__type__(:decode, type, elem) | acc])
   end
 
   def decode_bin_rows(packet, fields) do
