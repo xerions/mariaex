@@ -268,8 +268,8 @@ defmodule Mariaex.Messages do
   defp decode_msg(body, :rows),                                                    do: __decode__(:row, body)
 
   defp decode_string(data),    do: data
-  defp decode_float(data),     do: Float.parse(data) |> elem(0)
-  defp decode_integer(data),   do: Integer.parse(data) |> elem(0)
+  defp decode_float(data),     do: String.to_float(data)
+  defp decode_integer(data),   do: String.to_integer(data)
   defp decode_bit(<<bit>>),    do: bit
   defp decode_null(_),         do: nil
   defp decode_boolean("1"),    do: true
@@ -320,15 +320,38 @@ defmodule Mariaex.Messages do
   end
 
   defp handle_decode_bin_rows({:string, _mysql_type}, packet),              do: length_encoded_string(packet)
-  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet),        do: parse_packet(packet, 8)
-  defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_packet(packet, 32)
-  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_packet(packet, 64)
+  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet),        do: parse_int_packet(packet, 8)
+  defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_int_packet(packet, 32)
+  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_int_packet(packet, 64)
   defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean_packet(packet)
+  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
+  defp handle_decode_bin_rows({:float, :field_type_float}, packet),         do: parse_float_packet(packet, 32)
+  defp handle_decode_bin_rows({:float, :field_type_double}, packet),        do: parse_float_packet(packet, 64)
 
-  defp parse_packet(packet, size) do
+  defp parse_boolean_packet(packet) do
+    << value, rest :: binary >> = packet
+    case value do
+      1 -> {true, rest}
+      0 -> {false, rest}
+    end
+  end
+
+  defp parse_float_packet(packet, size) do
+    << value :: size(size)-float-little, rest :: binary >> = packet
+    {value, rest}
+  end
+
+  defp parse_int_packet(packet, size) do
     << value :: size(size)-little, rest :: binary >> = packet
+    {value, rest}
+  end
+
+  defp parse_decimal_packet(packet) do
+    << length,  raw_value :: size(length)-little-binary, rest :: binary >> = packet
+    value = Decimal.new(raw_value)
     {value, rest}
   end
 

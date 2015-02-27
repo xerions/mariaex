@@ -8,7 +8,62 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
-  test "support primitive data types", context do
+  test "support primitive data types in binary protocol", context do
+    string  = "Californication"
+    text    = "Some random text"
+    binary  = <<0,1>>
+    table   = "basic_types_binary_protocol"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, active boolean, title varchar(20), body text(20), data blob)}
+
+    :ok = query(sql, [])
+    insert = ~s{INSERT INTO #{table} (active, title, body, data) } <>
+             ~s{VALUES (?, ?, ?, ?)}
+    :ok = query(insert, [true, string, text, binary])
+
+    # Boolean
+    [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
+
+    # String
+    [{^string}] = query("SELECT title from #{table} WHERE id = ?", [1])
+
+    # Text
+    [{^text}] = query("SELECT body from #{table} WHERE id = ?", [1])
+
+    # Binary
+    [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
+  end
+
+  test "support numeric data types in binary protocol", context do
+    integer = 16
+    float   = 0.1
+    double  = 3.1415
+    decimal = Decimal.new("16.90")
+    table   = "numeric_types_binary_test"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, count integer, intensity float, accuracy double, value decimal(10, 2))}
+
+    :ok = query(sql, [])
+    insert = ~s{INSERT INTO #{table} (count, intensity, accuracy, value) } <>
+             ~s{VALUES (?, ?, ?, ?)}
+    :ok = query(insert, [integer, float, double, decimal])
+
+    # Integer
+    [{^integer}] = query("SELECT count from #{table} WHERE id = ?", [1])
+
+    # Double
+    [{^double}] = query("SELECT accuracy from #{table} WHERE id = ?", [1])
+
+    # Float
+    [{0.10000000149011612}] = query("SELECT intensity from #{table} WHERE id = ?", [1])
+
+    # Decimal
+    [{^decimal}] = query("SELECT ?", [decimal])
+  end
+
+  test "support primitive data types in text protocol", context do
     integer          = 1
     negative_integer = -1
     float            = 3.1415
@@ -16,7 +71,7 @@ defmodule QueryTest do
     string           = "Californication"
     text             = "Some random text"
     binary           = <<0,1>>
-    table            = "basic_types"
+    table            = "basic_types_text_protocol"
 
     sql = ~s{CREATE TABLE #{table} } <>
           ~s{(id serial, active boolean, count integer, intensity float, } <>
@@ -24,7 +79,7 @@ defmodule QueryTest do
 
     :ok = query(sql, [])
 
-    # Booleans
+    # Boolean
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
     [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 
