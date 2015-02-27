@@ -40,6 +40,9 @@ defmodule QueryTest do
 
     # Binary
     [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
+
+    # Decimal
+    [{^decimal}] = query("SELECT value from #{table} WHERE id = ?", [1])
   end
 
   test "support primitive data types by text protocol", context do

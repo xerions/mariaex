@@ -326,9 +326,10 @@ defmodule Mariaex.Messages do
   defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean(packet)
+  defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean_packet(packet)
+  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
 
-  defp parse_boolean(packet) do
+  defp parse_boolean_packet(packet) do
     << value, rest :: binary >> = packet
     case value do
       1 -> {true, rest}
@@ -338,6 +339,12 @@ defmodule Mariaex.Messages do
 
   defp parse_int_packet(packet, size) do
     << value :: size(size)-little, rest :: binary >> = packet
+    {value, rest}
+  end
+
+  defp parse_decimal_packet(packet) do
+    << length,  raw_value :: size(length)-little-binary, rest :: binary >> = packet
+    value = Decimal.new(raw_value)
     {value, rest}
   end
 
