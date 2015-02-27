@@ -10,7 +10,7 @@ defmodule QueryTest do
 
   test "support primitive data types by binary protocol", context do
     integer = 1
-    float   = 3.1415
+    double   = 3.1415
     string  = "Californication"
     text    = "Some random text"
     binary  = <<0,1>>
@@ -18,13 +18,13 @@ defmodule QueryTest do
     table   = "basic_types_binary_protocol"
 
     sql = ~s{CREATE TABLE #{table} } <>
-          ~s{(id serial, active boolean, count integer, intensity float, } <>
+          ~s{(id serial, active boolean, count integer, accuracy double, } <>
           ~s{title varchar(20), body text(20), data blob, value decimal(10,2))}
 
     :ok = query(sql, [])
-    insert = ~s{INSERT INTO #{table} (active, count, intensity, title, body, data, value) } <>
+    insert = ~s{INSERT INTO #{table} (active, count, accuracy, title, body, data, value) } <>
              ~s{VALUES (?, ?, ?, ?, ?, ?, ?)}
-    :ok = query(insert, [true, integer, float, string, text, binary, decimal])
+    :ok = query(insert, [true, integer, double, string, text, binary, decimal])
 
     # Boolean
     [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
@@ -43,6 +43,9 @@ defmodule QueryTest do
 
     # Decimal
     [{^decimal}] = query("SELECT value from #{table} WHERE id = ?", [1])
+
+    # Double
+    [{^double}] = query("SELECT accuracy from #{table} WHERE id = ?", [1])
   end
 
   test "support primitive data types by text protocol", context do
