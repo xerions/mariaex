@@ -112,6 +112,26 @@ defmodule QueryTest do
     [{nil}] = query("SELECT null", [])
   end
 
+  test "encode and decode nils", context do
+    double  = 3.1415
+    decimal = Decimal.new("18.93")
+    integer = 16
+    table   = "encoding_and_decoding_nils"
+
+    sql = ~s{CREATE TABLE #{table} } <>
+          ~s{(id serial, count integer, accuracy double, value decimal(10, 2))}
+
+    :ok = query(sql, [])
+    insert = ~s{INSERT INTO #{table} (count, accuracy, value) } <>
+             ~s{VALUES (?, ?, ?)}
+
+    :ok = query(insert, [nil, double, decimal])
+    [{nil}] = query("SELECT count from #{table} WHERE id = ?", [1])
+
+    :ok = query(insert, [nil, double, nil])
+    [{nil, ^double, nil}] = query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2])
+  end
+
   test "encode and decode decimals", context do
     table            = "test_decimals"
     :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
@@ -188,8 +208,21 @@ defmodule QueryTest do
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
     [] = query("SELECT * FROM test", [])
+
     :ok = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
     [{27, "foobar"}] = query("SELECT * FROM test", [])
+
+    # Text protocol
+    :ok = query("INSERT INTO test VALUES (?, ?)", [28, nil], [])
+    [{28, nil}] = query("SELECT * FROM test where id = 28", [])
+
+    # Binary protocol
+    :ok = query("INSERT INTO test VALUES (29, NULL)", [], [])
+    [{29, nil}] = query("SELECT * FROM test where id = 29", [])
+
+    # Inserting without specifying a column
+    :ok = query("INSERT INTO test (id) VALUES (30)", [], [])
+    [{30, nil}] = query("SELECT * FROM test where id = 30", [])
   end
 
   test "connection works after failure", context do
