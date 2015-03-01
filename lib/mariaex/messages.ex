@@ -317,7 +317,7 @@ defmodule Mariaex.Messages do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [{name, type} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+  def decode_bin_rows(packet, [{_name, type} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
     {value, next} = handle_decode_bin_rows(__type__(:type, type), packet)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end

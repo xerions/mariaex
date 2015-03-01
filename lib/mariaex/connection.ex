@@ -156,7 +156,6 @@ defmodule Mariaex.Connection do
   end
 
   def handle_call({:connect, opts}, from, %{queue: queue, sock_mod: sock_mod} = s) do
-    sock_type = opts[:sock_type] || :tcp
     host      = Keyword.fetch!(opts, :hostname)
     host      = if is_binary(host), do: String.to_char_list(host), else: host
     port      = opts[:port] || 3306
