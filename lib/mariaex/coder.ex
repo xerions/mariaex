@@ -121,14 +121,14 @@ defmodule Mariaex.Coder do
     quote do: unquote(Macro.var(key, nil)) = next
   end
 
-  defp gen_body({key, _, [function]}, keys) do
+  defp gen_body({key, _, [function]}, _keys) do
     quote do
       size = unquote(function) * 8
       <<unquote(Macro.var(key, nil)) :: size(size), next :: binary>> = next
     end
   end
 
-  defp gen_body({key, _, [function, :string]}, keys) do
+  defp gen_body({key, _, [function, :string]}, _keys) do
     quote do
       size = unquote(function)
       <<unquote(Macro.var(key, nil)) :: size(size)-binary, next :: binary>> = next
@@ -165,21 +165,8 @@ defmodule Mariaex.Coder do
   defp match({key, _, [:length_encoded_integer]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: integer)]
   end
-
   defp match({key, _, [:length_encoded_string | _]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: binary)]
-  end
-
-  defp length_encoded_integer do
-    quote do
-
-    end
-  end
-
-  defp length_encoded_string do
-    quote do
-
-    end
   end
 
   defmodule Utils do
@@ -220,5 +207,4 @@ defmodule Mariaex.Coder do
       end
     end
   end
-
 end

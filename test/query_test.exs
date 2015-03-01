@@ -23,16 +23,16 @@ defmodule QueryTest do
     :ok = query(insert, [true, string, text, binary])
 
     # Boolean
-    [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
+    assert [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
 
     # String
-    [{^string}] = query("SELECT title from #{table} WHERE id = ?", [1])
+    assert [{^string}] = query("SELECT title from #{table} WHERE id = ?", [1])
 
     # Text
-    [{^text}] = query("SELECT body from #{table} WHERE id = ?", [1])
+    assert [{^text}] = query("SELECT body from #{table} WHERE id = ?", [1])
 
     # Binary
-    [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
+    assert [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
   end
 
   test "support numeric data types in binary protocol", context do
@@ -51,16 +51,16 @@ defmodule QueryTest do
     :ok = query(insert, [integer, float, double, decimal])
 
     # Integer
-    [{^integer}] = query("SELECT count from #{table} WHERE id = ?", [1])
+    assert [{^integer}] = query("SELECT count from #{table} WHERE id = ?", [1])
 
     # Double
-    [{^double}] = query("SELECT accuracy from #{table} WHERE id = ?", [1])
+    assert [{^double}] = query("SELECT accuracy from #{table} WHERE id = ?", [1])
 
     # Float
-    [{0.10000000149011612}] = query("SELECT intensity from #{table} WHERE id = ?", [1])
+    assert [{0.10000000149011612}] = query("SELECT intensity from #{table} WHERE id = ?", [1])
 
     # Decimal
-    [{^decimal}] = query("SELECT ?", [decimal])
+    assert [{^decimal}] = query("SELECT ?", [decimal])
   end
 
   test "support primitive data types in text protocol", context do
@@ -81,35 +81,35 @@ defmodule QueryTest do
 
     # Boolean
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
-    [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Integer
     :ok = query("INSERT INTO #{table} (count) values (?)", [integer])
-    [{^integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
     :ok = query("INSERT INTO #{table} (count) values (?)", [negative_integer])
-    [{^negative_integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^negative_integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Float
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
-    [{^float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [negative_float])
-    [{^negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # String
     :ok = query("INSERT INTO #{table} (title) values (?)", [string])
-    [{^string}] = query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
-    [{"mø"}] = query("SELECT 'mø'", [])
+    assert [{^string}] = query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{"mø"}] = query("SELECT 'mø'", [])
 
     # Text
     :ok = query("INSERT INTO #{table} (body) values (?)", [text])
-    [{^text}] = query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^text}] = query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Binary
     :ok = query("INSERT INTO #{table} (data) values (?)", [binary])
-    [{^binary}] = query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{^binary}] = query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Nil
-    [{nil}] = query("SELECT null", [])
+    assert [{nil}] = query("SELECT null", [])
   end
 
   test "encode and decode nils", context do
@@ -125,10 +125,10 @@ defmodule QueryTest do
              ~s{VALUES (?, ?, ?)}
 
     :ok = query(insert, [nil, double, decimal])
-    [{nil}] = query("SELECT count from #{table} WHERE id = ?", [1])
+    assert [{nil}] = query("SELECT count from #{table} WHERE id = ?", [1])
 
     :ok = query(insert, [nil, double, nil])
-    [{nil, ^double, nil}] = query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2])
+    assert [{nil, ^double, nil}] = query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2])
   end
 
   test "encode and decode nils with more than 8 columns", context do
@@ -150,7 +150,7 @@ defmodule QueryTest do
     result = {1, 1, nil, 3, 4, nil, 6, nil, 8, nil, 10}
 
     :ok = query(insert, values)
-    [^result] = query("SELECT * FROM #{table}", [])
+    assert [^result] = query("SELECT * FROM #{table}", [])
   end
 
   test "encode and decode decimals", context do
@@ -171,8 +171,8 @@ defmodule QueryTest do
     date = {2010, 10, 17}
     time = {19, 27, 30}
     datetime = {date, time}
-    assert [{date, datetime}] =  query("SELECT date(?), timestamp(?)", [date, datetime])
-    assert [time] =  query("SELECT time(?)", [time])
+    assert [{^date, ^datetime}] = query("SELECT date(?), timestamp(?)", [date, datetime])
+    assert [{^time}] = query("SELECT time(?)", [time])
   end
 
   test "decode time", context do
@@ -210,40 +210,40 @@ defmodule QueryTest do
   end
 
   test "non data statement", context do
-    assert :ok = query("BEGIN", [])
-    assert :ok = query("COMMIT", [])
+    :ok = query("BEGIN", [])
+    :ok = query("COMMIT", [])
   end
 
   test "result struct", context do
-    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
-    assert %Mariaex.Result{} = res
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
+    %Mariaex.Result{} = res
     assert res.command == :select
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
   end
 
   test "error record", context do
-    assert {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
+    {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
   end
 
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
-    [] = query("SELECT * FROM test", [])
+    assert [] = query("SELECT * FROM test", [])
 
     :ok = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
-    [{27, "foobar"}] = query("SELECT * FROM test", [])
+    assert [{27, "foobar"}] = query("SELECT * FROM test", [])
 
     # Text protocol
     :ok = query("INSERT INTO test VALUES (?, ?)", [28, nil], [])
-    [{28, nil}] = query("SELECT * FROM test where id = 28", [])
+    assert [{28, nil}] = query("SELECT * FROM test where id = 28", [])
 
     # Binary protocol
     :ok = query("INSERT INTO test VALUES (29, NULL)", [], [])
-    [{29, nil}] = query("SELECT * FROM test where id = 29", [])
+    assert [{29, nil}] = query("SELECT * FROM test where id = 29", [])
 
     # Inserting without specifying a column
     :ok = query("INSERT INTO test (id) VALUES (30)", [], [])
-    [{30, nil}] = query("SELECT * FROM test where id = 30", [])
+    assert [{30, nil}] = query("SELECT * FROM test where id = 30", [])
   end
 
   test "connection works after failure", context do
@@ -252,9 +252,9 @@ defmodule QueryTest do
   end
 
   test "prepared_statements", context do
-    assert :ok = query("CREATE TABLE test_statements (id int, text text)", [])
-    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [1, "test1"])
-    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
+    :ok = query("CREATE TABLE test_statements (id int, text text)", [])
+    :ok = query("INSERT INTO test_statements VALUES(?, ?)", [1, "test1"])
+    :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
     assert [{1, "test1"}, {2, "test2"}] = query("SELECT id, text FROM test_statements WHERE id > ?", [0])
   end
 
