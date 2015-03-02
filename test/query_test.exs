@@ -169,7 +169,7 @@ defmodule QueryTest do
 
   test "encode and decode dates", context do
     date = {2010, 10, 17}
-    time = {19, 27, 30}
+    time = {19, 27, 30, 10}
     datetime = {date, time}
     assert [{^date, ^datetime}] = query("SELECT date(?), timestamp(?)", [date, datetime])
     assert [{^time}] = query("SELECT time(?)", [time])
@@ -194,9 +194,9 @@ defmodule QueryTest do
   end
 
   test "encode time", context do
-    assert [{{1, 0, 0}}] = query("SELECT time(?)", [{1, 0, 0}])
-    assert [{{3, 1, 7}}] = query("SELECT time(?)", [{3, 1, 7}])
-    assert [{{23, 10, 27}}] = query("SELECT time(?)", [{23, 10, 27}])
+    assert [{{1, 0, 0}}] = query("SELECT time(?)", [{1, 0, 0, 0}])
+    assert [{{3, 1, 7}}] = query("SELECT time(?)", [{3, 1, 7, 0}])
+    assert [{{23, 10, 27}}] = query("SELECT time(?)", [{23, 10, 27, 0}])
   end
 
   test "encode date", context do
@@ -205,8 +205,8 @@ defmodule QueryTest do
   end
 
   test "encode timestamp", context do
-    assert [{{{1, 1, 1}, {1, 0, 0}}}] = query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0}}])
-    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27}}])
+    assert [{{{1, 1, 1}, {1, 0, 0}}}] = query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0, 0}}])
+    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27, 0}}])
   end
 
   test "non data statement", context do
