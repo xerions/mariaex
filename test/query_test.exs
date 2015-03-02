@@ -186,14 +186,16 @@ defmodule QueryTest do
     time_with_msec = {10, 14, 16, 23}
     table = "test_times"
 
-    sql = ~s{CREATE TABLE #{table} (id int, t1 time(6), t2 time(6))}
+    sql = ~s{CREATE TABLE #{table} (id int, t1 time, t2 time)}
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, t1, t2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, time, time_with_msec])
 
-    assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [{time, time_with_msec}]
-    assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [{time, time_with_msec}]
+    # Time
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [{time, {10, 14, 16, 0}}]
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [{time, {10, 14, 16, 0}}]
   end
 
   test "encode and decode datetime", context do
@@ -202,15 +204,16 @@ defmodule QueryTest do
     datetime_with_msec = {date, {13, 32, 15, 12}}
     table = "test_datetimes"
 
-    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime(6), dt2 datetime(6))}
+    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime)}
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, datetime, datetime_with_msec])
 
     # Datetime
-    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [{datetime, datetime_with_msec}]
-    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [{datetime, datetime_with_msec}]
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [{datetime, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [{datetime, {date, {13, 32, 15, 0}}}]
   end
 
   test "encode and decode timestamp", context do
@@ -219,15 +222,16 @@ defmodule QueryTest do
     timestamp_with_msec = {date, {13, 32, 15, 12}}
     table = "test_timestamps"
 
-    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp(6), ts2 timestamp(6))}
+    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, timestamp, timestamp_with_msec])
 
-    # timestamp
-    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [{timestamp, timestamp_with_msec}]
-    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [{timestamp, timestamp_with_msec}]
+    # Timestamp
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [{timestamp, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [{timestamp, {date, {13, 32, 15, 0}}}]
     assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [{{{1, 1, 1}, {0, 0, 0, 0}}}]
     assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
     assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
