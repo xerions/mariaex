@@ -23,16 +23,16 @@ defmodule QueryTest do
     :ok = query(insert, [true, string, text, binary])
 
     # Boolean
-    [{true}] = query("SELECT active from #{table} WHERE id = ?", [1])
+    assert query("SELECT active from #{table} WHERE id = ?", [1]) == [{true}]
 
     # String
-    [{^string}] = query("SELECT title from #{table} WHERE id = ?", [1])
+    assert query("SELECT title from #{table} WHERE id = ?", [1]) == [{string}]
 
     # Text
-    [{^text}] = query("SELECT body from #{table} WHERE id = ?", [1])
+    assert query("SELECT body from #{table} WHERE id = ?", [1]) == [{text}]
 
     # Binary
-    [{^binary}] = query("SELECT data from #{table} WHERE id = ?", [1])
+    assert query("SELECT data from #{table} WHERE id = ?", [1]) == [{binary}]
   end
 
   test "support numeric data types in binary protocol", context do
@@ -51,16 +51,16 @@ defmodule QueryTest do
     :ok = query(insert, [integer, float, double, decimal])
 
     # Integer
-    [{^integer}] = query("SELECT count from #{table} WHERE id = ?", [1])
+    assert query("SELECT count from #{table} WHERE id = ?", [1]) == [{integer}]
 
     # Double
-    [{^double}] = query("SELECT accuracy from #{table} WHERE id = ?", [1])
+    assert query("SELECT accuracy from #{table} WHERE id = ?", [1]) == [{double}]
 
     # Float
-    [{0.10000000149011612}] = query("SELECT intensity from #{table} WHERE id = ?", [1])
+    assert query("SELECT intensity from #{table} WHERE id = ?", [1]) == [{0.10000000149011612}]
 
     # Decimal
-    [{^decimal}] = query("SELECT ?", [decimal])
+    assert query("SELECT ?", [decimal]) == [{decimal}]
   end
 
   test "support primitive data types in text protocol", context do
@@ -81,35 +81,35 @@ defmodule QueryTest do
 
     # Boolean
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
-    [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Integer
     :ok = query("INSERT INTO #{table} (count) values (?)", [integer])
-    [{^integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", []) == [{integer}]
     :ok = query("INSERT INTO #{table} (count) values (?)", [negative_integer])
-    [{^negative_integer}] = query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT count from #{table} WHERE id = LAST_INSERT_ID()", []) == [{negative_integer}]
 
     # Float
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
-    [{^float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", []) == [{float}]
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [negative_float])
-    [{^negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", []) == [{negative_float}]
 
     # String
     :ok = query("INSERT INTO #{table} (title) values (?)", [string])
-    [{^string}] = query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
-    [{"mø"}] = query("SELECT 'mø'", [])
+    assert query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", []) == [{string}]
+    assert query("SELECT 'mø'", []) == [{"mø"}]
 
     # Text
     :ok = query("INSERT INTO #{table} (body) values (?)", [text])
-    [{^text}] = query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", []) == [{text}]
 
     # Binary
     :ok = query("INSERT INTO #{table} (data) values (?)", [binary])
-    [{^binary}] = query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", []) == [{binary}]
 
     # Nil
-    [{nil}] = query("SELECT null", [])
+    assert query("SELECT null", []) == [{nil}]
   end
 
   test "encode and decode nils", context do
@@ -125,10 +125,10 @@ defmodule QueryTest do
              ~s{VALUES (?, ?, ?)}
 
     :ok = query(insert, [nil, double, decimal])
-    [{nil}] = query("SELECT count from #{table} WHERE id = ?", [1])
+    assert query("SELECT count from #{table} WHERE id = ?", [1]) == [{nil}]
 
     :ok = query(insert, [nil, double, nil])
-    [{nil, ^double, nil}] = query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2])
+    assert query("SELECT count, accuracy, value from #{table} WHERE id = ?", [2]) == [{nil, double, nil}]
   end
 
   test "encode and decode nils with more than 8 columns", context do
@@ -150,7 +150,7 @@ defmodule QueryTest do
     result = {1, 1, nil, 3, 4, nil, 6, nil, 8, nil, 10}
 
     :ok = query(insert, values)
-    [^result] = query("SELECT * FROM #{table}", [])
+    assert query("SELECT * FROM #{table}", []) == [result]
   end
 
   test "encode and decode decimals", context do
@@ -158,104 +158,132 @@ defmodule QueryTest do
     :ok = query("CREATE TABLE #{table} (id serial, cost decimal(10,4))", [])
 
     :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("12.93")])
-    assert [{Decimal.new("12.9300")}] == query("SELECT cost FROM #{table}", [])
+    assert query("SELECT cost FROM #{table}", []) == [{Decimal.new("12.9300")}]
 
     :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("-164.9")])
-    assert [{Decimal.new("-164.9000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", []) == [{Decimal.new("-164.9000")}]
 
     :ok = query("INSERT INTO #{table} (cost) values (?)", [Decimal.new("16400")])
-    assert [{Decimal.new("16400.0000")}] == query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", []) == [{Decimal.new("16400.0000")}]
   end
 
-  test "encode and decode dates", context do
+  test "encode and decode date", context do
     date = {2010, 10, 17}
-    time = {19, 27, 30}
-    datetime = {date, time}
-    assert [{date, datetime}] =  query("SELECT date(?), timestamp(?)", [date, datetime])
-    assert [time] =  query("SELECT time(?)", [time])
+    table = "test_dates"
+
+    sql = ~s{CREATE TABLE #{table} (id int, d date)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, d) VALUES (?, ?)}
+    :ok = query(insert, [1, date])
+
+    assert query("SELECT d FROM #{table} WHERE id = 1", []) == [{date}]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [{date}]
   end
 
-  test "decode time", context do
-    assert [{{0, 0, 0}}] = query("SELECT time('00:00:00')", [])
-    assert [{{3, 1, 7}}] = query("SELECT time('03:01:07')", [])
-    assert [{{23, 10, 27}}] = query("SELECT time('23:10:27')", [])
+  test "encode and decode time", context do
+    time = {19, 27, 30, 0}
+    time_with_msec = {10, 14, 16, 23}
+    table = "test_times"
+
+    sql = ~s{CREATE TABLE #{table} (id int, t1 time, t2 time)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, t1, t2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, time, time_with_msec])
+
+    # Time
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [{time, {10, 14, 16, 0}}]
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [{time, {10, 14, 16, 0}}]
   end
 
-  test "decode date", context do
-    assert [{{1, 1, 1}}] = query("SELECT date('0001-01-01')", [])
-    assert [{{1, 2, 3}}] = query("SELECT date('0001-02-03')", [])
-    assert [{{2013, 12, 21}}] = query("SELECT date('2013-12-21')", [])
+  test "encode and decode datetime", context do
+    date = {2010, 10, 17}
+    datetime = {date, {10, 10, 30, 0}}
+    datetime_with_msec = {date, {13, 32, 15, 12}}
+    table = "test_datetimes"
+
+    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, datetime, datetime_with_msec])
+
+    # Datetime
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [{datetime, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [{datetime, {date, {13, 32, 15, 0}}}]
   end
 
-  test "decode timestamp", context do
-    assert [{{{1, 1, 1}, {0, 0, 0}}}] = query("SELECT timestamp('0001-01-01 00:00:00')", [])
-    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27')", [])
-    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp('2013-12-21 23:01:27 EST')", [])
-  end
+  test "encode and decode timestamp", context do
+    date = {2010, 10, 17}
+    timestamp = {date, {10, 10, 30, 0}}
+    timestamp_with_msec = {date, {13, 32, 15, 12}}
+    table = "test_timestamps"
 
-  test "encode time", context do
-    assert [{{1, 0, 0}}] = query("SELECT time(?)", [{1, 0, 0}])
-    assert [{{3, 1, 7}}] = query("SELECT time(?)", [{3, 1, 7}])
-    assert [{{23, 10, 27}}] = query("SELECT time(?)", [{23, 10, 27}])
-  end
+    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
+    :ok = query(sql, [])
 
-  test "encode date", context do
-    assert [{{2221, 1, 1}}] = query("SELECT date(?)", [{2221, 1, 1}])
-    assert [{{2013, 12, 21}}] = query("SELECT date(?)", [{2013, 12, 21}])
-  end
+    insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, timestamp, timestamp_with_msec])
 
-  test "encode timestamp", context do
-    assert [{{{1, 1, 1}, {1, 0, 0}}}] = query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0}}])
-    assert [{{{2013, 12, 21}, {23, 1, 27}}}] = query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27}}])
+    # Timestamp
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [{timestamp, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [{timestamp, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [{{{1, 1, 1}, {0, 0, 0, 0}}}]
+    assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
+    assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
   end
 
   test "non data statement", context do
-    assert :ok = query("BEGIN", [])
-    assert :ok = query("COMMIT", [])
+    :ok = query("BEGIN", [])
+    :ok = query("COMMIT", [])
   end
 
   test "result struct", context do
-    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
-    assert %Mariaex.Result{} = res
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
+    %Mariaex.Result{} = res
     assert res.command == :select
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
   end
 
   test "error record", context do
-    assert {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
+    {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
   end
 
   test "insert", context do
     :ok = query("CREATE TABLE test (id int, text text)", [])
-    [] = query("SELECT * FROM test", [])
+    assert query("SELECT * FROM test", []) == []
 
     :ok = query("INSERT INTO test VALUES (27, 'foobar')", [], [])
-    [{27, "foobar"}] = query("SELECT * FROM test", [])
+    assert query("SELECT * FROM test", []) == [{27, "foobar"}]
 
     # Text protocol
     :ok = query("INSERT INTO test VALUES (?, ?)", [28, nil], [])
-    [{28, nil}] = query("SELECT * FROM test where id = 28", [])
+    assert query("SELECT * FROM test where id = 28", []) == [{28, nil}]
 
     # Binary protocol
     :ok = query("INSERT INTO test VALUES (29, NULL)", [], [])
-    [{29, nil}] = query("SELECT * FROM test where id = 29", [])
+    assert query("SELECT * FROM test where id = 29", []) == [{29, nil}]
 
     # Inserting without specifying a column
     :ok = query("INSERT INTO test (id) VALUES (30)", [], [])
-    [{30, nil}] = query("SELECT * FROM test where id = 30", [])
+    assert query("SELECT * FROM test where id = 30", []) == [{30, nil}]
   end
 
   test "connection works after failure", context do
     assert %Mariaex.Error{} = query("wat", [])
-    assert [{"syntax"}] = query("SELECT 'syntax'", [])
+    assert query("SELECT 'syntax'", []) == [{"syntax"}]
   end
 
   test "prepared_statements", context do
-    assert :ok = query("CREATE TABLE test_statements (id int, text text)", [])
-    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [1, "test1"])
-    assert :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
-    assert [{1, "test1"}, {2, "test2"}] = query("SELECT id, text FROM test_statements WHERE id > ?", [0])
+    :ok = query("CREATE TABLE test_statements (id int, text text)", [])
+    :ok = query("INSERT INTO test_statements VALUES(?, ?)", [1, "test1"])
+    :ok = query("INSERT INTO test_statements VALUES(?, ?)", [2, "test2"])
+    assert query("SELECT id, text FROM test_statements WHERE id > ?", [0]) == [{1, "test1"}, {2, "test2"}]
   end
 
   test "encoding bad parameters", context do
