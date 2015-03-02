@@ -167,45 +167,70 @@ defmodule QueryTest do
     assert query("SELECT cost FROM #{table} WHERE id = LAST_INSERT_ID()", []) == [{Decimal.new("16400.0000")}]
   end
 
-  test "encode and decode dates", context do
-    time = {19, 27, 30, 10}
-    datetime = {date, time}
-    assert [{^date, ^datetime}] = query("SELECT date(?), timestamp(?)", [date, datetime])
-    assert [{^time}] = query("SELECT time(?)", [time])
+  test "encode and decode date", context do
+    date = {2010, 10, 17}
+    table = "test_dates"
+
+    sql = ~s{CREATE TABLE #{table} (id int, d date)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, d) VALUES (?, ?)}
+    :ok = query(insert, [1, date])
+
+    assert query("SELECT d FROM #{table} WHERE id = 1", []) == [{date}]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [{date}]
   end
 
-  test "decode time", context do
-    assert query("SELECT time('00:00:00')", []) == [{{0, 0, 0}}]
-    assert query("SELECT time('03:01:07')", []) == [{{3, 1, 7}}]
-    assert query("SELECT time('23:10:27')", []) == [{{23, 10, 27}}]
+  test "encode and decode time", context do
+    time = {19, 27, 30, 0}
+    time_with_msec = {10, 14, 16, 23}
+    table = "test_times"
+
+    sql = ~s{CREATE TABLE #{table} (id int, t1 time(6), t2 time(6))}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, t1, t2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, time, time_with_msec])
+
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [{time, time_with_msec}]
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [{time, time_with_msec}]
   end
 
-  test "decode date", context do
-    assert query("SELECT date('0001-01-01')", []) == [{{1, 1, 1}}]
-    assert query("SELECT date('0001-02-03')", []) == [{{1, 2, 3}}]
-    assert query("SELECT date('2013-12-21')", []) == [{{2013, 12, 21}}]
+  test "encode and decode datetime", context do
+    date = {2010, 10, 17}
+    datetime = {date, {10, 10, 30, 0}}
+    datetime_with_msec = {date, {13, 32, 15, 12}}
+    table = "test_datetimes"
+
+    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime(6), dt2 datetime(6))}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, datetime, datetime_with_msec])
+
+    # Datetime
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [{datetime, datetime_with_msec}]
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [{datetime, datetime_with_msec}]
   end
 
-  test "decode timestamp", context do
-    assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [{{{1, 1, 1}, {0, 0, 0}}}]
-    assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [{{{2013, 12, 21}, {23, 1, 27}}}]
-    assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27}}}]
-  end
+  test "encode and decode timestamp", context do
+    date = {2010, 10, 17}
+    timestamp = {date, {10, 10, 30, 0}}
+    timestamp_with_msec = {date, {13, 32, 15, 12}}
+    table = "test_timestamps"
 
-  test "encode time", context do
-    assert query("SELECT time(?)", [{1, 0, 0, 0}]) == [{{1, 0, 0}}]
-    assert query("SELECT time(?)", [{3, 1, 7, 0}]) == [{{3, 1, 7}}]
-    assert query("SELECT time(?)", [{23, 10, 27, 0}]) == [{{23, 10, 27}}]
-  end
+    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp(6), ts2 timestamp(6))}
+    :ok = query(sql, [])
 
-  test "encode date", context do
-    assert query("SELECT date(?)", [{2221, 1, 1}]) == [{{2221, 1, 1}}]
-    assert query("SELECT date(?)", [{2013, 12, 21}]) == [{{2013, 12, 21}}]
-  end
+    insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, timestamp, timestamp_with_msec])
 
-  test "encode timestamp", context do
-    assert query("SELECT timestamp(?)", [{{1, 1, 1}, {1, 0, 0, 0}}]) == [{{{1, 1, 1}, {1, 0, 0}}}]
-    assert query("SELECT timestamp(?)", [{{2013, 12, 21}, {23, 1, 27, 0}}]) == [{{{2013, 12, 21}, {23, 1, 27}}}]
+    # timestamp
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [{timestamp, timestamp_with_msec}]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [{timestamp, timestamp_with_msec}]
+    assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [{{{1, 1, 1}, {0, 0, 0, 0}}}]
+    assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
+    assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
   end
 
   test "non data statement", context do

@@ -237,7 +237,7 @@ defmodule Mariaex.Messages do
   defp encode_param({hour, min, sec, 0}),
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
   defp encode_param({hour, min, sec, msec}),
-    do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
+    do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, 0}}),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}),
@@ -294,9 +294,14 @@ defmodule Mariaex.Messages do
   end
 
   defp decode_time(data) do
-    String.split(data, ":")
+    time = String.split(data, [":", "."])
     |> Enum.map(&String.to_integer/1)
     |> List.to_tuple
+
+    case time do
+      {hour, min, sec} -> {hour, min, sec, 0}
+      {hour, min, sec, msec} -> {hour, min, sec, msec}
+    end
   end
 
   defp decode_timestamp(data)  do
@@ -333,6 +338,7 @@ defmodule Mariaex.Messages do
   defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet), do: parse_datetime_packet(packet)
   defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean_packet(packet)
   defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
   defp handle_decode_bin_rows({:float, :field_type_float}, packet),         do: parse_float_packet(packet, 32)
@@ -363,8 +369,12 @@ defmodule Mariaex.Messages do
   end
 
   defp parse_time_packet(packet) do
-    << 8 :: 8-little, _ :: 8-little, _ :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> = packet
-    {{hour, min, sec}, rest}
+    case packet do
+      << 8 :: 8-little, _ :: 8-little, _ :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
+        {{hour, min, sec, 0}, rest}
+     << 12::8, _ :: 32-little, _ :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
+        {{hour, min, sec, msec}, rest}
+    end
   end
 
   defp parse_date_packet(packet) do
@@ -373,8 +383,12 @@ defmodule Mariaex.Messages do
   end
 
   defp parse_datetime_packet(packet) do
-    << 7 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> = packet
-    {{{year, month, day}, {hour, min, sec}}, rest}
+    case packet do
+      << 7 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
+        {{{year, month, day}, {hour, min, sec, 0}}, rest}
+      << 11 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
+        {{{year, month, day}, {hour, min, sec, msec}}, rest}
+    end
   end
 
   defp null_map_from_mysql(nullbin) do
