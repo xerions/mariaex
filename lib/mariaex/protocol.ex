@@ -31,6 +31,7 @@ defmodule Mariaex.Protocol do
     password = opts[:password]
     scramble = case password do
       nil -> ""
+      ""  -> ""      
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
