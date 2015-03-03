@@ -250,7 +250,24 @@ defmodule QueryTest do
     assert res.num_rows == 1
   end
 
-  test "error record", context do
+  test "result struct on update", context do
+    table = "struct_on_update"
+
+    :ok = query(~s{CREATE TABLE #{table} (num int)}, [])
+    :ok = query(~s{INSERT INTO #{table} (num) VALUES (?)}, [1])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
+    assert %Mariaex.Result{} = res
+    assert res.command == :update
+    assert res.num_rows == 1
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
+    assert %Mariaex.Result{} = res
+    assert res.command == :update
+    assert res.num_rows == 1
+  end
+
+  test "error struct", context do
     {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
   end
 
