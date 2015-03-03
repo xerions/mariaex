@@ -14,9 +14,10 @@ defmodule Mariaex.Result do
     command:  atom,
     columns:  [String.t] | nil,
     rows:     [tuple] | nil,
+    last_insert_id: integer,
     num_rows: integer}
 
-  defstruct [:command, :columns, :rows, :num_rows]
+  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows]
 end
 
 defmodule Mariaex.Error do
