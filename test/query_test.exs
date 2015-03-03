@@ -242,9 +242,10 @@ defmodule QueryTest do
     :ok = query("COMMIT", [])
   end
 
-  test "result struct", context do
+  test "result struct on select", context do
     {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
-    %Mariaex.Result{} = res
+
+    assert %Mariaex.Result{} = res
     assert res.command == :select
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
