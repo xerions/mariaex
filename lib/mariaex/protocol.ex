@@ -2,26 +2,29 @@ defmodule Mariaex.Protocol do
   @moduledoc false
 
   alias Mariaex.Connection
-  #alias Mariaex.Types
   import Mariaex.Messages
+
   use Bitwise, only_operators: true
 
+  @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
 
-  @maxpacketbytes 50000000
-  @long_password           0x00000001
-  @long_flag               0x00000004
-  @client_connect_with_db  0x00000008
-  @client_local_file       0x00000080
-  @protocol_41             0x00000200
-  @transactions            0x00002000
-  @secure_connection       0x00008000
-  @client_multi_statements 0x00010000
-  @client_multi_results    0x00020000
-  @client_deprecate_eof    0x01000000
-  @capabilities [@long_password, @long_flag, @client_local_file, @transactions,
-                 @client_connect_with_db, @client_multi_statements, @client_multi_results,
-                 @protocol_41, @secure_connection, @client_deprecate_eof]
+  @client_long_password     0x00000001
+  @client_found_rows        0x00000002
+  @client_long_flag         0x00000004
+  @client_connect_with_db   0x00000008
+  @client_local_files       0x00000080
+  @client_protocol_41       0x00000200
+  @client_transactions      0x00002000
+  @client_secure_connection 0x00008000
+  @client_multi_statements  0x00010000
+  @client_multi_results     0x00020000
+  @client_deprecate_eof     0x01000000
+
+  @capabilities @client_long_password   ||| @client_found_rows        ||| @client_long_flag |||
+                @client_connect_with_db ||| @client_local_files       ||| @client_protocol_41 |||
+                @client_transactions    ||| @client_secure_connection ||| @client_multi_statements |||
+                @client_multi_results   ||| @client_deprecate_eof
 
   def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = _packet, %{state: :handshake, opts: opts} = s) do
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
@@ -30,9 +33,8 @@ defmodule Mariaex.Protocol do
       nil -> ""
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
-    capabilities = Enum.reduce(@capabilities, 0, &(&1 ||| &2))
     msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: opts[:database], capability_flags: capabilities,
+                         database: opts[:database], capability_flags: @capabilities,
                          max_size: @maxpacketbytes, character_set: 8)
     msg_send(msg, s, seqnum + 1)
     %{ s | state: :handshake_send }
