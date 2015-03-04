@@ -171,13 +171,9 @@ defmodule Mariaex.Coder do
 
   defmodule Utils do
     def length_encoded_string(bin) do
-      case bin do
-        << 251 :: 8, rest :: bits >> -> {nil, rest}
-        _ ->
-          {length, next} = length_encoded_integer(bin)
-          << string :: size(length)-binary, next :: binary >> = next
-          {string, next}
-      end
+      {length, next} = length_encoded_integer(bin)
+      << string :: size(length)-binary, next :: binary >> = next
+      {string, next}
     end
 
     def length_encoded_string_eof(bin, acc \\ []) do

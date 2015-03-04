@@ -137,7 +137,7 @@ defmodule Mariaex.Connection do
   def init([sock_mod]) do
     {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
             backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil,
-            parameter_types: nil, types: nil, queue: :queue.new, opts: nil, statement_id: nil}}
+            parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil}}
   end
 
   @doc false

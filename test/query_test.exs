@@ -91,9 +91,12 @@ defmodule QueryTest do
 
     # Float
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [float])
-    assert query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", []) == [{float}]
+    [{query_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert_in_delta query_float, float, 0.0001
     :ok = query("INSERT INTO #{table} (intensity) values (?)", [negative_float])
-    assert query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", []) == [{negative_float}]
+    [{query_negative_float}] = query("SELECT intensity from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert_in_delta query_negative_float, negative_float, 0.0001
+
 
     # String
     :ok = query("INSERT INTO #{table} (title) values (?)", [string])
@@ -232,6 +235,7 @@ defmodule QueryTest do
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
     assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [{timestamp, {date, {13, 32, 15, 0}}}]
     assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [{timestamp, {date, {13, 32, 15, 0}}}]
+    assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [{{{0, 0, 0}, {0, 0, 0, 0}}}]
     assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [{{{1, 1, 1}, {0, 0, 0, 0}}}]
     assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
     assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]

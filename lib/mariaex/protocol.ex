@@ -82,7 +82,13 @@ defmodule Mariaex.Protocol do
   end
 
   def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
-    %{ state | substate: :column_definitions, state_data: {params > 0, columns > 0}, types: [], statement_id: id }
+    statedata = {params > 0, columns > 0}
+    case statedata do
+      {false, false} ->
+        send_execute(%{ state | statement_id: id})
+      _ ->
+        %{ state | substate: :column_definitions, state_data: {params > 0, columns > 0}, statement_id: id }
+    end
   end
 
   def dispatch(packet(msg: column_count(column_count: _count)), state = %{state: s}) when s in [:query_send, :execute_send] do
@@ -133,18 +139,23 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  def send_query(statement, [], s) do
-    msg_send(text_cmd(command: com_query, statement: statement), s, 0)
-    %{s | statement: statement, parameters: [], state: :query_send, substate: :column_count, rows: []}
-  end
-
   def send_query(statement, params, s) do
-    msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-    %{s | statement: statement, parameters: params, state: :prepare_send, rows: []}
+    command = get_command(statement)
+    case command in [:insert, :select, :update, :delete] do
+      true ->
+        msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
+        %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
+      false when params == [] ->
+        msg_send(text_cmd(command: com_query, statement: statement), s, 0)
+        %{s | statement: statement, parameters: [], types: [], state: :query_send, substate: :column_count, rows: []}
+      false ->
+        {_, s} = Connection.reply({:error, %Mariaex.Error{message: "unsupported query"}}, s)
+        %{ s | state: :running, substate: nil}
+    end
   end
 
   defp send_execute(s = %{statement_id: id, parameters: parameters, parameter_types: types}) do
-    if is_list(types) and length(parameters) == length(types) do
+    if length(parameters) == length(types) do
       parameters = Enum.zip(types, parameters)
       try do
         msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)

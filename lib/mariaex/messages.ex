@@ -358,7 +358,7 @@ defmodule Mariaex.Messages do
   end
 
   defp parse_int_packet(packet, size) do
-    << value :: size(size)-little, rest :: binary >> = packet
+    << value :: size(size)-little-signed, rest :: binary >> = packet
     {value, rest}
   end
 
@@ -384,6 +384,10 @@ defmodule Mariaex.Messages do
 
   defp parse_datetime_packet(packet) do
     case packet do
+      << 0 :: 8-little, rest :: binary >> ->
+        {{{0, 0, 0}, {0, 0, 0, 0}}, rest}
+      << 4 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, rest :: binary >> ->
+        {{{year, month, day}, {0, 0, 0, 0}}, rest}
       << 7 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
         {{{year, month, day}, {hour, min, sec, 0}}, rest}
       << 11 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
