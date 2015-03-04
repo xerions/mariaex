@@ -3,7 +3,7 @@ defmodule Mariaex.Mixfile do
 
   def project do
     [app: :mariaex,
-     version: "0.0.1-dev",
+     version: "0.1.0",
      elixir: "~> 1.0",
      deps: deps,
      name: "Mariaex",
@@ -26,7 +26,7 @@ defmodule Mariaex.Mixfile do
   end
 
   defp package do
-    [contributors: ["Dmitry Aleksandrov"],
-     links: %{"Github" => "https://github.com/liveforeverx/mariaex"}]
+    [contributors: ["Dmitry Russ(Aleksandrov)"],
+     links: %{"Github" => "https://github.com/xerions/mariaex"}]
   end
 end

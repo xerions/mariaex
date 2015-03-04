@@ -4,7 +4,7 @@ defmodule Mariaex.Connection.Tcp do
     :gen_tcp.connect(host, port, sock_opts, timeout)
   end
 
-  def receive(sock, {:tcp, _, blob}), do: blob
+  def receive(_sock, {:tcp, _, blob}), do: blob
 
   def next(sock), do: :inet.setopts(sock, active: :once)
 

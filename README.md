@@ -1,7 +1,17 @@
 Mariaex [![Build Status](https://travis-ci.org/liveforeverx/mariaex.svg)](https://travis-ci.org/liveforeverx/mariaex)
 =======
 
-Version: 0.0.1-dev
+## Usage
+
+Add Mariaex as a dependency in your `mix.exs` file.
+
+```elixir
+def deps do
+  [{:mariaex, "~> 0.1"} ]
+end
+```
+
+After you are done, run `mix deps.get` in your shell to fetch and compile Mariaex. Start an interactive Elixir shell with `iex -S mix`.
 
 ```elixir
   iex(1)> {:ok, p} = Mariaex.Connection.start_link(username: "ecto", database: "ecto_test")
@@ -21,3 +31,19 @@ Version: 0.0.1-dev
    %Mariaex.Result{columns: ["id", "title"], command: :select, num_rows: 2,
     rows: [{1, "test"}, {2, "test2"}]}}
 ```
+
+## License
+
+Copyright 2015 Travelping
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
