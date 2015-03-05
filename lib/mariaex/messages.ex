@@ -161,10 +161,6 @@ defmodule Mariaex.Messages do
     column_count :length_encoded_integer
   end
 
-  defcoder :row do
-    row :length_encoded_string, :until_eof
-  end
-
   defcoder :bin_row do
     row :string_eof
   end
@@ -268,12 +264,6 @@ defmodule Mariaex.Messages do
   defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
-  defp decode_msg(body, :rows),                                                    do: __decode__(:row, body)
-
-  def decode_type_row([], [], acc), do: acc |> Enum.reverse |> List.to_tuple
-  def decode_type_row([elem | rest_rows], [{_name, type} | rest_defs], acc) do
-    decode_type_row(rest_rows, rest_defs, [__type__(:decode, type, elem) | acc])
-  end
 
   def decode_bin_rows(packet, fields) do
     nullbin_size = div(length(fields) + 7 + 2, 8)

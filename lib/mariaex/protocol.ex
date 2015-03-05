@@ -55,8 +55,6 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(msg: eof_resp() = _msg), s = %{types: definitions, state: state, substate: :column_definitions}) do
     case state do
-      :query_send ->
-        %{ s | state: :rows, substate: nil, types: Enum.reverse(definitions) }
       :prepare_send ->
         case s.state_data do
           {true, true} ->
@@ -94,10 +92,6 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(msg: column_count(column_count: _count)), state = %{state: s}) when s in [:query_send, :execute_send] do
     %{ state | substate: :column_definitions, types: [] }
-  end
-
-  def dispatch(packet(msg: row(row: row)), state = %{state: :rows, types: definitions, rows: acc}) do
-    %{state | rows: [decode_type_row(row, definitions, []) | acc]}
   end
 
   def dispatch(packet(msg: bin_row(row: row)), state = %{state: :rows, types: definitions, rows: acc}) do
