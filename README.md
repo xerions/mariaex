@@ -1,4 +1,4 @@
-Mariaex [![Build Status](https://travis-ci.org/liveforeverx/mariaex.svg)](https://travis-ci.org/liveforeverx/mariaex)
+Mariaex [![Build Status](https://travis-ci.org/xerions/mariaex.svg)](https://travis-ci.org/xerions/mariaex)
 =======
 
 ## Usage
