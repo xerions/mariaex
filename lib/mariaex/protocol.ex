@@ -181,5 +181,4 @@ defmodule Mariaex.Protocol do
     statement |> String.split(" ", parts: 2) |> hd |> String.downcase |> String.to_atom
   end
   defp get_command(nil), do: nil
-
 end

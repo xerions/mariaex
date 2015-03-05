@@ -73,11 +73,6 @@ defmodule Mariaex.Messages do
 
   def __type__(:decode, _type, nil), do: nil
 
-  for {type, list}  <- @types,
-      {_name, id}   <- list   do
-    function_name = :"decode_#{type}"
-    def __type__(:decode, unquote(id), elem), do: unquote(function_name)(elem)
-  end
   for {_type, list} <- @types,
       {name, id}    <- list   do
     def __type__(:id, unquote(name)), do: unquote(id)
@@ -274,40 +269,6 @@ defmodule Mariaex.Messages do
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
   defp decode_msg(body, :rows),                                                    do: __decode__(:row, body)
-
-  defp decode_string(data),    do: data
-  defp decode_float(data),     do: String.to_float(data)
-  defp decode_integer(data),   do: String.to_integer(data)
-  defp decode_bit(<<bit>>),    do: bit
-  defp decode_null(_),         do: nil
-  defp decode_boolean("1"),    do: true
-  defp decode_boolean("0"),    do: false
-
-  defp decode_decimal(data) do
-    Decimal.new(data)
-  end
-
-  defp decode_date(data) do
-    String.split(data, "-")
-    |> Enum.map(&String.to_integer/1)
-    |> List.to_tuple
-  end
-
-  defp decode_time(data) do
-    time = String.split(data, [":", "."])
-    |> Enum.map(&String.to_integer/1)
-    |> List.to_tuple
-
-    case time do
-      {hour, min, sec} -> {hour, min, sec, 0}
-      {hour, min, sec, msec} -> {hour, min, sec, msec}
-    end
-  end
-
-  defp decode_timestamp(data)  do
-    [date, time] = String.split(data, " ")
-    {decode_date(date), decode_time(time)}
-  end
 
   def decode_type_row([], [], acc), do: acc |> Enum.reverse |> List.to_tuple
   def decode_type_row([elem | rest_rows], [{_name, type} | rest_defs], acc) do

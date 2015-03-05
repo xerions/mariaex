@@ -8,7 +8,7 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
-  test "support primitive data types in binary protocol", context do
+  test "support primitive data types using prepared statements", context do
     string  = "Californication"
     text    = "Some random text"
     binary  = <<0,1>>
@@ -35,7 +35,7 @@ defmodule QueryTest do
     assert query("SELECT data from #{table} WHERE id = ?", [1]) == [{binary}]
   end
 
-  test "support numeric data types in binary protocol", context do
+  test "support numeric data types using prepared statements", context do
     integer = 16
     float   = 0.1
     double  = 3.1415
@@ -63,7 +63,7 @@ defmodule QueryTest do
     assert query("SELECT ?", [decimal]) == [{decimal}]
   end
 
-  test "support primitive data types in text protocol", context do
+  test "support primitive data types with prepared statement", context do
     integer          = 1
     negative_integer = -1
     float            = 3.1415
