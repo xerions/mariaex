@@ -312,4 +312,11 @@ defmodule QueryTest do
     assert %Mariaex.Error{message: "query has invalid number of parameters"} = query("SELECT 1", [:badparam])
     assert %Mariaex.Error{message: "query has invalid parameters"} = query("SELECT ?", [:badparam])
   end
+
+  test "non ascii character", context do
+    :ok = query("CREATE TABLE test_charset (id int, text text)", [])
+    :ok = query("INSERT INTO test_charset VALUES (?, ?)", [1, "忍者"])
+
+    assert query("SELECT * FROM test_charset where id = 1", []) == [{1, "忍者"}]
+  end
 end

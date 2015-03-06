@@ -38,6 +38,7 @@ defmodule Mariaex.Connection do
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: 5000);
+    * `:charset` - Database encoding (default: "utf8");
 
   ## Function signatures
 
@@ -62,6 +63,7 @@ defmodule Mariaex.Connection do
         case GenServer.call(pid, {:connect, opts}, timeout) do
           {:ok, _} ->
             Process.link(pid)
+            query(pid, "SET CHARACTER SET " <> (opts[:charset] || "utf8"))
             {:ok, pid}
           err ->
             err
