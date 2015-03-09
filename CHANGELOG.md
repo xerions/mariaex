@@ -1,4 +1,4 @@
-# 0.2.0-dev
+# 0.1.1
 
 * Enhancements
   * Add possibility to define charset, and add default charset utf8
