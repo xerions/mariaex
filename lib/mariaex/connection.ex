@@ -153,8 +153,9 @@ defmodule Mariaex.Connection do
   end
 
   @doc false
-  def handle_call(:stop, _from, s) do
-    {:stop, :ok, :normal, s}
+  def handle_call(:stop, from, s) do
+    GenServer.reply(from, :ok)
+    {:stop, :normal, s}
   end
 
   def handle_call({:connect, opts}, from, %{queue: queue, sock_mod: sock_mod} = s) do
