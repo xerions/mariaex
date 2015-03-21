@@ -31,7 +31,7 @@ defmodule Mariaex.Protocol do
     password = opts[:password]
     scramble = case password do
       nil -> ""
-      ""  -> ""      
+      ""  -> ""
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
@@ -108,7 +108,7 @@ defmodule Mariaex.Protocol do
     %{ state | state: :running, substate: nil }
   end
 
-  defp password(@mysql_native_password, password, salt) do
+  defp password(type, password, salt) when type in [@mysql_native_password, ""] do
     stage1 = :crypto.hash(:sha, password)
     stage2 = :crypto.hash(:sha, stage1)
     :crypto.hash_init(:sha)
