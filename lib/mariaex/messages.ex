@@ -94,7 +94,7 @@ defmodule Mariaex.Messages do
     length_auth_plugin_data 1
     _ 10
     auth_plugin_data2 :string #max(13, length_auth_plugin_data - 8), :string
-    plugin :string
+    plugin :string_eof
   end
 
   defcoder :handshake_resp do

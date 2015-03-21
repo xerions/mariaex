@@ -2,6 +2,7 @@
 
 * Bug fixes
   * fix crashing of a process on stop
+  * fix authorization with mysql 5.1
 
 # 0.1.1
 
