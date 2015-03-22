@@ -1,4 +1,4 @@
-# 0.1.2-dev
+# 0.1.2
 
 * Bug fixes
   * fix crashing of a process on stop
