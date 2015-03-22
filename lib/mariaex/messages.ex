@@ -240,7 +240,7 @@ defmodule Mariaex.Messages do
     null_map_to_mysql(rest, << acc :: bytes, reverse_bits(byte, "") :: bytes >>)
   end
   defp null_map_to_mysql(bits, acc) do
-    padding = 8 - bit_size(bits)
+    padding = rem(8 - bit_size(bits), 8)
     << acc :: binary, 0 :: size(padding), reverse_bits(bits, "") :: bits >>
   end
 

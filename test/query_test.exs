@@ -319,4 +319,10 @@ defmodule QueryTest do
 
     assert query("SELECT * FROM test_charset where id = 1", []) == [{1, "忍者"}]
   end
+
+  test "test nullbit", context do
+    :ok = query("CREATE TABLE test_nullbit (id int, t1 text, t2 text, t3 text, t4 text, t5 text not NULL, t6 text, t7 text not NULL)", [])
+    :ok = query("INSERT INTO test_nullbit VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [nil, "t1", nil, "t3", nil, "t5", nil, "t7"])
+    assert query("SELECT * FROM test_nullbit WHERE t1 = 't1'", []) == [{nil, "t1", nil, "t3", nil, "t5", nil, "t7"}]
+  end
 end
