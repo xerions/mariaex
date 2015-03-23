@@ -106,7 +106,10 @@ defmodule Mariaex.Protocol do
     close_statement(state)
   end
 
-  defp password(type, password, salt) when type in [@mysql_native_password, ""] do
+  defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
+  defp password("", password, salt), do: mysql_native_password(password, salt)
+
+  defp mysql_native_password(password, salt) do
     stage1 = :crypto.hash(:sha, password)
     stage2 = :crypto.hash(:sha, stage1)
     :crypto.hash_init(:sha)
