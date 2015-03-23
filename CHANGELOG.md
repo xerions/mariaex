@@ -1,3 +1,8 @@
+# 0.1.3
+
+* Bug fixes
+  * close prepared statements on end of execution
+
 # 0.1.2
 
 * Bug fixes

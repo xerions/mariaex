@@ -43,9 +43,7 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{state: s})
    when s in [:handshake_send, :query_send, :prepare_send, :prepare_send_2, :execute_send] do
-    error = %Mariaex.Error{mariadb: %{code: code, message: message}}
-    {_, state} = Connection.reply({:error, error}, state)
-    %{ state | state: :running, substate: nil }
+    abort_statement(state, code, message)
   end
 
   def dispatch(packet(msg: column_definition_41() = msg), state = %{types: acc, substate: :column_definitions}) do
@@ -77,7 +75,7 @@ defmodule Mariaex.Protocol do
     rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
     {_, state} = Connection.reply(result, state)
-    %{ state | state: :running, substate: nil }
+    close_statement(state)
   end
 
   def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
@@ -105,7 +103,7 @@ defmodule Mariaex.Protocol do
                              rows: Enum.reverse(rows),
                              num_rows: length(rows)}
     {_, state} = Connection.reply({:ok, result}, state)
-    %{ state | state: :running, substate: nil }
+    close_statement(state)
   end
 
   defp password(type, password, salt) when type in [@mysql_native_password, ""] do
@@ -164,11 +162,23 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp abort_statement(s = %{statement_id: id}, error_msg) do
-    error = %Mariaex.Error{message: error_msg}
+  defp abort_statement(s, code, message) do
+    abort_statement(s, %Mariaex.Error{mariadb: %{code: code, message: message}})
+  end
+  defp abort_statement(s, error = %Mariaex.Error{}) do
     {_, s} = Connection.reply({:error, error}, s)
-    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+    close_statement(s)
+  end
+  defp abort_statement(s, error_msg) do
+    abort_statement(s, %Mariaex.Error{message: error_msg})
+  end
+
+  defp close_statement(s = %{statement_id: nil}) do
     %{ s | state: :running, substate: nil}
+  end
+  defp close_statement(s = %{statement_id: id}) do
+    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+    %{ s | state: :running, substate: nil, statement_id: id}
   end
 
   defp get_command(statement) when is_binary(statement) do
