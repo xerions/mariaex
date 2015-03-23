@@ -8,6 +8,19 @@ defmodule QueryTest do
     {:ok, [pid: pid]}
   end
 
+  test "simple query using password connection" do
+    opts = [ database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass" ]
+    {:ok, pid} = Mariaex.Connection.start_link(opts)
+
+    context = [pid: pid]
+
+    :ok = query("CREATE TABLE test_pass (id int, text text)", [])
+    assert query("SELECT * FROM test_pass", []) == []
+
+    :ok = query("INSERT INTO test_pass VALUES (27, 'foobar')", [], [])
+    assert query("SELECT * FROM test_pass", []) == [{27, "foobar"}]
+  end
+
   test "support primitive data types using prepared statements", context do
     string  = "Californication"
     text    = "Some random text"
