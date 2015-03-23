@@ -1,3 +1,8 @@
+# 0.1.4
+
+* Bug fixes
+  * fix regression, that doesn't handle the plugin type right on handshake
+
 # 0.1.3
 
 * Bug fixes
