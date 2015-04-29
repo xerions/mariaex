@@ -119,7 +119,7 @@ defmodule Mariaex.Connection do
   """
   @spec query(pid, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
   def query(pid, statement, params \\ [], opts \\ []) do
-    message = {:query, statement, params, opts}
+    message = {:query, String.strip(statement), params, opts}
     timeout = opts[:timeout] || @timeout
     GenServer.call(pid, message, timeout)
   end
