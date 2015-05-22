@@ -1,3 +1,8 @@
+# 0.1.5-dev
+
+* Bug fixes
+  * strip statement
+
 # 0.1.4
 
 * Bug fixes
