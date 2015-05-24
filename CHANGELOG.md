@@ -1,4 +1,7 @@
-# 0.1.5-dev
+# 0.1.5
+
+* Enhancments
+  * Allow add own :socket_options
 
 * Bug fixes
   * strip statement

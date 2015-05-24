@@ -1,6 +1,6 @@
 defmodule Mariaex.Connection.Tcp do
-  def connect(host, port, timeout) do
-    sock_opts = [{:active, :once}, {:packet, :raw}, :binary]
+  def connect(host, port, socket_options, timeout) do
+    sock_opts = [{:active, :once}, {:packet, :raw}, :binary] ++ socket_options
     :gen_tcp.connect(host, port, sock_opts, timeout)
   end
 

@@ -39,6 +39,7 @@ defmodule Mariaex.Connection do
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: 5000);
     * `:charset` - Database encoding (default: "utf8");
+    * `:socket_options` - Options to be given to the underlying socket;
 
   ## Function signatures
 
@@ -163,7 +164,7 @@ defmodule Mariaex.Connection do
     port      = opts[:port] || 3306
     timeout   = opts[:timeout] || @timeout
 
-    case sock_mod.connect(host, port, timeout) do
+    case sock_mod.connect(host, port, opts[:socket_options] || [], timeout) do
       {:ok, sock} ->
         queue = :queue.in({{:connect, opts}, from}, queue)
         s = %{s | opts: opts, state: :handshake, sock: {sock_mod, sock}, queue: queue}
