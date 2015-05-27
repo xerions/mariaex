@@ -96,9 +96,23 @@ defmodule Mariaex.Protocol do
     %{state | rows: [decode_bin_rows(row, definitions) | acc]}
   end
 
-  def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows, types: types, rows: rows})
+  def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows})
    when elem(msg, 0) in [:ok_resp, :eof_resp] do
-    result = %Mariaex.Result{command: get_command(statement),
+    cmd = get_command(statement)
+    case cmd do
+      :call when elem(msg, 0) == :eof_resp ->
+        %{state | state: :call_last_ok, substate: nil}
+      _ ->
+        result(state, cmd)
+    end
+  end
+
+  def dispatch(packet(msg: ok_resp()), state = %{state: :call_last_ok}) do
+    result(state, :call)
+  end
+
+  defp result(state = %{types: types, rows: rows}, cmd) do
+    result = %Mariaex.Result{command: cmd,
                              columns: (for {type, _} <- types, do: type),
                              rows: Enum.reverse(rows),
                              num_rows: length(rows)}
@@ -137,7 +151,7 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, params, s) do
     command = get_command(statement)
-    case command in [:insert, :select, :update, :delete] do
+    case command in [:insert, :select, :update, :delete, :call] do
       true ->
         msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
         %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
