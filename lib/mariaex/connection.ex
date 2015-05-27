@@ -154,7 +154,7 @@ defmodule Mariaex.Connection do
   end
 
   @doc false
-  def handle_call(:stop, from, s) do
+  def handle_call(:stop, _from, s) do
     {:stop, :normal, :ok, s}
   end
 
