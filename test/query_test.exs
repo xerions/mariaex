@@ -21,6 +21,12 @@ defmodule QueryTest do
     assert query("SELECT * FROM test_pass", []) == [{27, "foobar"}]
   end
 
+  test "queries are dequeued after previous query is processed", context do
+    assert {:timeout, _} =
+           catch_exit(query("SLEEP(0.1", [], timeout: 0))
+    assert [{1}] = query("SELECT 1", [])
+  end
+
   test "support primitive data types using prepared statements", context do
     string  = "Californication"
     text    = "Some random text"
