@@ -1,3 +1,8 @@
+# 0.1.6
+
+* Bug fixes
+  * Queue is not dequeued
+
 # 0.1.5
 
 * Enhancments
