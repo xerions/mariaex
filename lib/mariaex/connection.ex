@@ -189,9 +189,13 @@ defmodule Mariaex.Connection do
   end
 
   def handle_info(sock_message, %{sock: {sock_mod, sock}} = s) do
-    new_s = sock_mod.receive(sock, sock_message) |> process(s)
+    s = sock_mod.receive(sock, sock_message) |> process(s)
     sock_mod.next(sock)
-    {:noreply, new_s}
+    if s.state == :running do
+      {:noreply, next(s)}
+    else
+      {:noreply, s}
+    end
   end
 
   def next(%{queue: queue} = s) do
