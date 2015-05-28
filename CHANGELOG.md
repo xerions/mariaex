@@ -1,3 +1,8 @@
+# 0.1.7-dev
+
+* Enhancments
+  * initial implementation of stored procedures
+
 # 0.1.6
 
 * Bug fixes
