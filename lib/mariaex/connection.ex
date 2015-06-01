@@ -138,9 +138,11 @@ defmodule Mariaex.Connection do
 
   @doc false
   def init([sock_mod]) do
+    cache = :ets.new(:cache, [])
     {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
-            backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil,
-            parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil}}
+            backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
+            parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil,
+            cache: cache}}
   end
 
   @doc false

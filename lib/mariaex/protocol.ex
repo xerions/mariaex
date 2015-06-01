@@ -78,7 +78,8 @@ defmodule Mariaex.Protocol do
     close_statement(state)
   end
 
-  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
+  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{statement: statement, state: :prepare_send, cache: cache}) do
+    :ets.insert(cache, {statement, id})
     statedata = {params > 0, columns > 0}
     case statedata do
       {false, false} ->
@@ -98,6 +99,7 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows})
    when elem(msg, 0) in [:ok_resp, :eof_resp] do
+
     cmd = get_command(statement)
     case cmd do
       :call when elem(msg, 0) == :eof_resp ->
@@ -153,8 +155,13 @@ defmodule Mariaex.Protocol do
     command = get_command(statement)
     case command in [:insert, :select, :update, :delete, :call] do
       true ->
-        msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-        %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
+        case :ets.lookup(s.cache, statement) do
+          [{_, id}] ->
+            send_execute(%{ s | statement_id: id})
+          _ ->
+            msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
+            %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
+        end
       false when params == [] ->
         msg_send(text_cmd(command: com_query, statement: statement), s, 0)
         %{s | statement: statement, parameters: [], types: [], state: :query_send, substate: :column_count, rows: []}
@@ -194,7 +201,7 @@ defmodule Mariaex.Protocol do
     %{ s | state: :running, substate: nil}
   end
   defp close_statement(s = %{statement_id: id}) do
-    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+    #msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
     %{ s | state: :running, substate: nil, statement_id: id}
   end
 
