@@ -157,7 +157,7 @@ defmodule Mariaex.Protocol do
       true ->
         case :ets.lookup(s.cache, statement) do
           [{_, id}] ->
-            send_execute(%{ s | statement_id: id})
+            send_execute(%{ s | statement_id: id, statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []})
           _ ->
             msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
             %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
