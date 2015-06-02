@@ -46,8 +46,18 @@ defmodule Mariaex.Protocol do
     abort_statement(state, code, message)
   end
 
-  def dispatch(packet(msg: column_definition_41() = msg), state = %{types: acc, substate: :column_definitions}) do
+  def dispatch(packet(msg: column_definition_41() = msg), state = %{statement: statement, types: acc,
+                                                                    substate: :column_definitions, cache: cache}) do
     column_definition_41(type: type, name: name) = msg
+    [{_types, parameters_types}] = List.foldl([{name, type} | acc], [{[], []}], fn ({type_name, types}, [{acc_types, acc_params}]) ->
+      case type_name do
+        "?" ->
+          [{acc_types, [{type_name, types} | acc_params]}]
+        _ ->
+          [{[{type_name, types} | acc_types], acc_params}]
+      end
+    end)
+    Mariaex.Cache.update(cache, statement, parameters_types)
     %{ state | types: [{name, type} | acc] }
   end
 
@@ -78,8 +88,9 @@ defmodule Mariaex.Protocol do
     close_statement(state)
   end
 
-  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{statement: statement, state: :prepare_send, cache: cache}) do
-    :ets.insert(cache, {statement, id})
+  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)),
+               state = %{statement: statement, state: :prepare_send, sock: sock, cache: cache, cache_size: cache_size}) do
+    Mariaex.Cache.insert(cache, {statement, id, params, sock}, cache_size)
     statedata = {params > 0, columns > 0}
     case statedata do
       {false, false} ->
@@ -155,12 +166,16 @@ defmodule Mariaex.Protocol do
     command = get_command(statement)
     case command in [:insert, :select, :update, :delete, :call] do
       true ->
-        case :ets.lookup(s.cache, statement) do
-          [{_, id}] ->
-            send_execute(%{ s | statement_id: id})
+        case Mariaex.Cache.lookup(s.cache, statement) do
+          [{statement, id, _timestamp, num_params, types, sock}] ->
+            send_execute(%{ s | statement_id: id, statement: statement,
+                            parameters: params, parameter_types: types, types: [],
+                            state: :prepare_send, rows: [], sock: sock, params_number: num_params})
           _ ->
             msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-            %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
+            %{s | statement: statement, parameters: params,
+              parameter_types: [], types: [], state: :prepare_send,
+              rows: [], params_number: length(params)}
         end
       false when params == [] ->
         msg_send(text_cmd(command: com_query, statement: statement), s, 0)
@@ -171,12 +186,13 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp send_execute(s = %{statement_id: id, parameters: parameters, parameter_types: types}) do
+  defp send_execute(s = %{statement: _statement, statement_id: id, parameters: parameters,
+                          parameter_types: types, params_number: num_params}) do
     if length(parameters) == length(types) do
       parameters = Enum.zip(types, parameters)
       try do
         msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
-        %{ s | state: :execute_send, substate: :column_count }
+        %{ s | state: :execute_send, substate: :column_count, params_number: num_params }
       catch
         :throw, :encoder_error ->
           abort_statement(s, "query has invalid parameters")
@@ -189,20 +205,32 @@ defmodule Mariaex.Protocol do
   defp abort_statement(s, code, message) do
     abort_statement(s, %Mariaex.Error{mariadb: %{code: code, message: message}})
   end
+
   defp abort_statement(s, error = %Mariaex.Error{}) do
     {_, s} = Connection.reply({:error, error}, s)
     close_statement(s)
   end
+
   defp abort_statement(s, error_msg) do
     abort_statement(s, %Mariaex.Error{message: error_msg})
   end
 
-  defp close_statement(s = %{statement_id: nil}) do
+  def close_statement(s = %{statement_id: nil}) do
     %{ s | state: :running, substate: nil}
   end
-  defp close_statement(s = %{statement_id: id}) do
-    #msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
-    %{ s | state: :running, substate: nil, statement_id: id}
+
+  def close_statement(s = %{statement_id: id, statement: nil}) do
+    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+  end
+
+  def close_statement(s = %{statement_id: id, statement: statement, cache: cache, parameters: params}) do
+    case Mariaex.Cache.lookup(cache, statement) do
+      [] ->
+        msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
+        %{ s | state: :running, substate: nil, statement_id: id}
+      [{_statement, _id, _timestamp, _num_params, _types, _sock}] ->
+        %{ s | state: :running, substate: nil, statement_id: id}
+    end
   end
 
   defp get_command(statement) when is_binary(statement) do
