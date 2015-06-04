@@ -288,6 +288,7 @@ defmodule Mariaex.Messages do
   defp handle_decode_bin_rows({:integer, :field_type_int24}, packet),       do: parse_int_packet(packet, 32)
   defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_int_packet(packet, 32)
   defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_int_packet(packet, 64)
+  defp handle_decode_bin_rows({:integer, :field_type_year}, packet),        do: parse_int_packet(packet, 16)
   defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)

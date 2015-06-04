@@ -290,6 +290,15 @@ defmodule QueryTest do
     assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [{max_signed}]
   end
 
+  test "decode year", context do
+    table = "test_year"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield year)", [])
+
+    year = 2015
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [year])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [{year}]
+  end
+
   test "non data statement", context do
     :ok = query("BEGIN", [])
     :ok = query("COMMIT", [])
