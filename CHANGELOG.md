@@ -4,6 +4,7 @@
   * initial implementation of stored procedures
   * add year, smallint and mediumint decoding
   * allow query command delimiter be \n
+  * allow setting :sndbuf, :recbuf, :buffer in tcp options
 
 # 0.1.6
 
