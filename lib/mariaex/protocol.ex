@@ -199,7 +199,7 @@ defmodule Mariaex.Protocol do
   end
 
   defp get_command(statement) when is_binary(statement) do
-    statement |> String.split(" ", parts: 2) |> hd |> String.downcase |> String.to_atom
+    statement |> :binary.split([" ", "\n"]) |> hd |> String.downcase |> String.to_atom
   end
   defp get_command(nil), do: nil
 end

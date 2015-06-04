@@ -387,4 +387,8 @@ defmodule QueryTest do
   test "test non stripped queries", context do
     assert query("\n\nSELECT 1\n", []) == [{1}]
   end
+
+  test "\\n next to SELECT should not cause failure", context do
+    assert query("SELECT\n1", []) == [{1}]
+  end
 end
