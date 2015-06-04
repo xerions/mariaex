@@ -260,6 +260,45 @@ defmodule QueryTest do
     assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [{{{2013, 12, 21}, {23, 1, 27, 0}}}]
   end
 
+  test "decode smallint", context do
+    table = "test_smallint"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield smallint)", [])
+
+    max_signed = 32767
+    min_signed = -32768
+    out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [{max_signed}]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [{min_signed}]
+    assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [{max_signed}]
+  end
+
+  test "decode mediumint", context do
+    table = "test_mediumint"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield mediumint)", [])
+
+    max_signed = 8388607
+    min_signed = -8388608
+    out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [{max_signed}]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [{min_signed}]
+    assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [{max_signed}]
+  end
+
+  test "decode year", context do
+    table = "test_year"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield year)", [])
+
+    year = 2015
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [year])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [{year}]
+  end
+
   test "non data statement", context do
     :ok = query("BEGIN", [])
     :ok = query("COMMIT", [])
