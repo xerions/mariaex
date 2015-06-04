@@ -1,7 +1,9 @@
-# 0.1.7-dev
+# 0.1.7
 
 * Enhancments
   * initial implementation of stored procedures
+  * add year, smallint and mediumint decoding
+  * allow query command delimiter be \n
 
 # 0.1.6
 
