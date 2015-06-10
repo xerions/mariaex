@@ -1,4 +1,4 @@
-# 0.2.0-dev
+# 0.2.0
 
 * Enhancments
   * add caching and reusing of prepared statements
