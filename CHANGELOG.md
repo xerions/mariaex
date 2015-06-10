@@ -1,3 +1,11 @@
+# 0.2.0-dev
+
+* Enhancments
+  * add caching and reusing of prepared statements
+
+* Backwards incompatible changes
+  * no more sanitizing input, the queris starting with whitespace and '\n' are no more valid queries
+
 # 0.1.7
 
 * Enhancments

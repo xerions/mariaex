@@ -2,6 +2,7 @@ defmodule Mariaex.Protocol do
   @moduledoc false
 
   alias Mariaex.Connection
+  alias Mariaex.Cache
   import Mariaex.Messages
 
   use Bitwise, only_operators: true
@@ -46,18 +47,8 @@ defmodule Mariaex.Protocol do
     abort_statement(state, code, message)
   end
 
-  def dispatch(packet(msg: column_definition_41() = msg), state = %{statement: statement, types: acc,
-                                                                    substate: :column_definitions, cache: cache}) do
+  def dispatch(packet(msg: column_definition_41() = msg), state = %{types: acc, substate: :column_definitions}) do
     column_definition_41(type: type, name: name) = msg
-    [{_types, parameters_types}] = List.foldl([{name, type} | acc], [{[], []}], fn ({type_name, types}, [{acc_types, acc_params}]) ->
-      case type_name do
-        "?" ->
-          [{acc_types, [{type_name, types} | acc_params]}]
-        _ ->
-          [{[{type_name, types} | acc_types], acc_params}]
-      end
-    end)
-    Mariaex.Cache.update(cache, statement, parameters_types)
     %{ state | types: [{name, type} | acc] }
   end
 
@@ -85,12 +76,10 @@ defmodule Mariaex.Protocol do
     rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
     {_, state} = Connection.reply(result, state)
-    close_statement(state)
+    %{ state | state: :running, substate: nil}
   end
 
-  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)),
-               state = %{statement: statement, state: :prepare_send, sock: sock, cache: cache, cache_size: cache_size}) do
-    Mariaex.Cache.insert(cache, {statement, id, params, sock}, cache_size)
+  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
     statedata = {params > 0, columns > 0}
     case statedata do
       {false, false} ->
@@ -130,7 +119,7 @@ defmodule Mariaex.Protocol do
                              rows: Enum.reverse(rows),
                              num_rows: length(rows)}
     {_, state} = Connection.reply({:ok, result}, state)
-    close_statement(state)
+    %{ state | state: :running, substate: nil}
   end
 
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
@@ -166,16 +155,13 @@ defmodule Mariaex.Protocol do
     command = get_command(statement)
     case command in [:insert, :select, :update, :delete, :call] do
       true ->
-        case Mariaex.Cache.lookup(s.cache, statement) do
-          [{statement, id, _timestamp, num_params, types, sock}] ->
-            send_execute(%{ s | statement_id: id, statement: statement,
-                            parameters: params, parameter_types: types, types: [],
-                            state: :prepare_send, rows: [], sock: sock, params_number: num_params})
-          _ ->
+        case Cache.lookup(s.cache, statement) do
+          {id, parameter_types} ->
+            send_execute(%{ s | statement_id: id, statement: statement, parameters: params,
+                                parameter_types: parameter_types, state: :prepare_send, rows: []})
+          nil ->
             msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-            %{s | statement: statement, parameters: params,
-              parameter_types: [], types: [], state: :prepare_send,
-              rows: [], params_number: length(params)}
+            %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
         end
       false when params == [] ->
         msg_send(text_cmd(command: com_query, statement: statement), s, 0)
@@ -186,13 +172,14 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp send_execute(s = %{statement: _statement, statement_id: id, parameters: parameters,
-                          parameter_types: types, params_number: num_params}) do
-    if length(parameters) == length(types) do
-      parameters = Enum.zip(types, parameters)
+  defp send_execute(s = %{statement: statement, statement_id: id, parameters: parameters,
+                          parameter_types: parameter_types, cache: cache, sock: sock}) do
+    Cache.insert(cache, statement, {id, parameter_types}, &close_statement(&1, &2, sock))
+    if length(parameters) == length(parameter_types) do
+      parameters = Enum.zip(parameter_types, parameters)
       try do
         msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
-        %{ s | state: :execute_send, substate: :column_count, params_number: num_params }
+        %{ s | state: :execute_send, substate: :column_count }
       catch
         :throw, :encoder_error ->
           abort_statement(s, "query has invalid parameters")
@@ -205,32 +192,25 @@ defmodule Mariaex.Protocol do
   defp abort_statement(s, code, message) do
     abort_statement(s, %Mariaex.Error{mariadb: %{code: code, message: message}})
   end
-
   defp abort_statement(s, error = %Mariaex.Error{}) do
     {_, s} = Connection.reply({:error, error}, s)
     close_statement(s)
   end
-
   defp abort_statement(s, error_msg) do
     abort_statement(s, %Mariaex.Error{message: error_msg})
+  end
+
+  def close_statement(_statement, {id, _}, sock) do
+    msg_send(stmt_close(command: com_stmt_close, statement_id: id), sock, 0)
   end
 
   def close_statement(s = %{statement_id: nil}) do
     %{ s | state: :running, substate: nil}
   end
-
-  def close_statement(s = %{statement_id: id, statement: nil}) do
+  def close_statement(s = %{statement: statement, statement_id: id, cache: cache}) do
+    Cache.delete(cache, statement)
     msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
-  end
-
-  def close_statement(s = %{statement_id: id, statement: statement, cache: cache, parameters: params}) do
-    case Mariaex.Cache.lookup(cache, statement) do
-      [] ->
-        msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
-        %{ s | state: :running, substate: nil, statement_id: id}
-      [{_statement, _id, _timestamp, _num_params, _types, _sock}] ->
-        %{ s | state: :running, substate: nil, statement_id: id}
-    end
+    %{ s | state: :running, substate: nil}
   end
 
   defp get_command(statement) when is_binary(statement) do

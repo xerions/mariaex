@@ -40,6 +40,7 @@ defmodule Mariaex.Connection do
     * `:timeout` - Connect timeout in milliseconds (default: 5000);
     * `:charset` - Database encoding (default: "utf8");
     * `:socket_options` - Options to be given to the underlying socket;
+    * `:cache_size` - Prepared statement cache size (default: 100);
 
   ## Function signatures
 
@@ -53,12 +54,13 @@ defmodule Mariaex.Connection do
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Mariaex.Error.t | term}
   def start_link(opts) do
     sock_type = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
+    cache_size = opts[:cache_size] || 100
     sock_mod = ("Elixir.Mariaex.Connection." <> sock_type) |> String.to_atom
     opts = opts
       |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
       |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
       |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
-    case GenServer.start(__MODULE__, [sock_mod]) do
+    case GenServer.start(__MODULE__, [sock_mod, cache_size]) do
       {:ok, pid} ->
         timeout = opts[:timeout] || @timeout
         case GenServer.call(pid, {:connect, opts}, timeout) do
@@ -137,13 +139,11 @@ defmodule Mariaex.Connection do
   ### GEN_SERVER CALLBACKS ###
 
   @doc false
-  def init([sock_mod]) do
-    cache = Mariaex.Cache.new
-    {:ok, cache_size} = Application.fetch_env(:mariaex, :cache_size)
+  def init([sock_mod, cache_size]) do
     {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
             backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
             parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil,
-            cache: cache, params_number: 0, cache_size: cache_size}}
+            cache: Mariaex.Cache.new(cache_size)}}
   end
 
   @doc false

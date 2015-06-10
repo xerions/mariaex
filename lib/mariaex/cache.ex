@@ -1,67 +1,37 @@
 defmodule Mariaex.Cache do
 
-  def new do
-    :ets.new(:cache, [])
+  def new(size) do
+    {size, :ets.new(:cache, [])}
   end
 
-  def lookup(cache, statement) do
-    :ets.lookup(cache, statement)
+  def lookup({_, cache}, statement) do
+    case :ets.lookup(cache, statement) do
+      [{_, _, info}] -> info
+      _ -> nil
+    end
   end
 
-  def delete(cache, statement) do
+  def delete({_, cache}, statement) do
     :ets.delete(cache, statement)
   end
-  
-  def insert(cache, data) do
-    :ets.insert(cache, data)
+
+  def insert({size, cache}, statement, data, cleanup) do
+    if :ets.info(cache, :size) > size, do: remove_oldest(cache, cleanup)
+    :ets.insert(cache, {statement, timestamp, data})
   end
 
-  def insert(cache, data, cache_size) do
+  defp remove_oldest(cache, cleanup) do
+    {statement, _, data} = :ets.foldl(fn({statement, timestamp, data}, nil) ->
+                                          {statement, timestamp, data}
+                                        ({_, timestamp, _} = actual, {_, acc_timestamp, _} = acc) ->
+                                          if timestamp < acc_timestamp do actual else acc end
+                                      end, nil, cache)
+    cleanup.(statement, data)
+    :ets.delete(cache, statement)
+  end
+
+  defp timestamp do
     {mega, secs, _} = :erlang.now
-    data = Tuple.insert_at(data, 2, mega * 1000000 + secs) |> Tuple.insert_at(4, [])
-    current_cache_size = :ets.foldl(fn(_data, acc) -> acc + 1 end, 0, cache)
-    clean_cache = case current_cache_size >= cache_size do
-                    true ->
-                      :ets.foldl(fn(rec, acc) ->
-                        old_st = elem(rec, 0)
-                        old_id = elem(rec, 1)
-                        old_time = elem(rec, 2)
-                        old_sock = elem(rec, 5)
-                        acc = case acc do
-                                0 ->
-                                  {old_st, old_time, old_id, old_sock}
-                                {st, time, id, sock} ->
-                                  case time > old_time do
-                                    true ->  {old_st, old_time, old_id, old_sock}
-                                    false -> {st, time, id, sock}
-                                  end
-                              end
-                        acc
-                      end, 0, cache)
-                    false ->
-                      :ets.insert(cache, data)
-                  end
-
-    case clean_cache do
-      {st, _timestamp, id, sock} ->
-        # remove the oldest query
-        delete(cache, st)
-        Mariaex.Protocol.close_statement(%{statement_id: id, statement: nil, sock: sock})
-        # insert new query
-        :ets.insert(cache, data)
-      _ ->
-        :ok
-    end
+    mega * 1000000 + secs
   end
-
-  def update(cache, statement, parameters_types) do
-    case Mariaex.Cache.lookup(cache, statement) do
-      [{statement, id, timestamp, num_params, _types, sock}] ->
-        Mariaex.Cache.delete(cache, statement)
-        Mariaex.Cache.insert(cache, {statement, id, timestamp, num_params, parameters_types, sock})
-      _ ->
-        :new_query
-    end
-  end
-
 end
