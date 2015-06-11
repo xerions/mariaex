@@ -387,4 +387,11 @@ defmodule QueryTest do
   test "\\n next to SELECT should not cause failure", context do
     assert query("SELECT\n1", []) == [{1}]
   end
+
+  test "test insert of multiple rows", context do
+    :ok = query("CREATE TABLE test_multiple_insert (id int, t1 text, t2 text)", [])
+    :ok = query("INSERT INTO test_multiple_insert (id, t1, t2) VALUES (?, ?, ?)", [5, "test_test1", "test_test2"])
+    :ok = query("INSERT INTO test_multiple_insert (id, t1, t2) VALUES (?, ?, ?), (?, ?, ?)", [[1, "test1", "test2"], [2, "test3", "test4"]])
+    assert query("SELECT * FROM test_multiple_insert WHERE t2 = ?", ["test4"]) == [{2, "test3", "test4"}]
+  end
 end
