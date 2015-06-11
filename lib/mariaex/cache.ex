@@ -11,8 +11,14 @@ defmodule Mariaex.Cache do
     end
   end
 
-  def delete({_, cache}, statement) do
-    :ets.delete(cache, statement)
+  def delete({_, cache}, statement, cleanup) do
+    case :ets.lookup(cache, statement) do
+      [{_, _, info}] ->
+        :ets.delete(cache, statement)
+        cleanup.(statement, info)
+      _ ->
+        nil
+    end
   end
 
   def insert({size, cache}, statement, data, cleanup) do

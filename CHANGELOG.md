@@ -1,3 +1,8 @@
+# 0.2.1
+
+* Bug fixes
+  * clean statement_id before running, which have produced close statement twice
+
 # 0.2.0
 
 * Enhancments

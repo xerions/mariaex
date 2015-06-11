@@ -76,7 +76,7 @@ defmodule Mariaex.Protocol do
     rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
     {_, state} = Connection.reply(result, state)
-    %{ state | state: :running, substate: nil}
+    %{ state | state: :running, substate: nil, statement_id: nil}
   end
 
   def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
@@ -119,7 +119,7 @@ defmodule Mariaex.Protocol do
                              rows: Enum.reverse(rows),
                              num_rows: length(rows)}
     {_, state} = Connection.reply({:ok, result}, state)
-    %{ state | state: :running, substate: nil}
+    %{ state | state: :running, substate: nil, statement_id: nil}
   end
 
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
@@ -207,10 +207,9 @@ defmodule Mariaex.Protocol do
   def close_statement(s = %{statement_id: nil}) do
     %{ s | state: :running, substate: nil}
   end
-  def close_statement(s = %{statement: statement, statement_id: id, cache: cache}) do
-    Cache.delete(cache, statement)
-    msg_send(stmt_close(command: com_stmt_close, statement_id: id), s, 0)
-    %{ s | state: :running, substate: nil}
+  def close_statement(s = %{statement: statement, sock: sock, cache: cache}) do
+    Cache.delete(cache, statement, &close_statement(&1, &2, sock))
+    %{ s | state: :running, substate: nil, statement_id: nil}
   end
 
   defp get_command(statement) when is_binary(statement) do
