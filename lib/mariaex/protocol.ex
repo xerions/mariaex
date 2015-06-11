@@ -175,8 +175,14 @@ defmodule Mariaex.Protocol do
   defp send_execute(s = %{statement: statement, statement_id: id, parameters: parameters,
                           parameter_types: parameter_types, cache: cache, sock: sock}) do
     Cache.insert(cache, statement, {id, parameter_types}, &close_statement(&1, &2, sock))
-    if length(parameters) == length(parameter_types) do
-      parameters = Enum.zip(parameter_types, parameters)
+    parameters_count = Enum.reduce(parameters, 0, fn(parameter,acc) ->
+      case is_list(parameter) do
+        true -> acc + length(parameter)
+        false -> acc + 1
+      end
+    end)
+    if parameters_count == length(parameter_types) do
+      parameters = zip_parameters_with_types(parameter_types, parameters, []) |> :lists.flatten
       try do
         msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
         %{ s | state: :execute_send, substate: :column_count }
@@ -186,6 +192,22 @@ defmodule Mariaex.Protocol do
       end
     else
       abort_statement(s, "query has invalid number of parameters")
+    end
+  end
+
+  defp zip_parameters_with_types(_, [], parameters), do: parameters
+  defp zip_parameters_with_types(parameters_types, [parameter | parameters], data) do
+    zip_parameters_with_types(parameters_types, parameter, parameters, data)
+  end
+
+  defp zip_parameters_with_types(parameters_types, parameter, parameters, data) do
+    case is_list(parameter) do
+      true ->
+        [types | params_types] = Enum.chunk(parameters_types, length(parameter))
+        zip_parameters_with_types(Enum.concat(params_types), parameters, [data | Enum.zip(types, parameter)])
+      false ->
+        [type | types] = parameters_types
+        zip_parameters_with_types(types, parameters, [data | Enum.zip([type], [parameter])])
     end
   end
 
