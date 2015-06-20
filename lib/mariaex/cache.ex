@@ -26,7 +26,7 @@ defmodule Mariaex.Cache do
     :ets.insert(cache, {statement, timestamp, data})
   end
 
-  def update({size, cache}, statement, data) do
+  def update({_, cache}, statement, data) do
     :ets.insert(cache, {statement, timestamp, data})
   end
 

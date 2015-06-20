@@ -1,4 +1,4 @@
-# 0.2.2-dev
+# 0.2.2
 
 * Bug fixes
   * do not close statement, if it is cached, and latest used too
