@@ -387,4 +387,21 @@ defmodule QueryTest do
   test "\\n next to SELECT should not cause failure", context do
     assert query("SELECT\n1", []) == [{1}]
   end
+
+  test "prepared statements outlive transaction rollback", context do
+    :ok = query("CREATE TABLE test_rollback (id int, text text)", [])
+    :ok = query("BEGIN", [])
+    :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
+    :ok = query("ROLLBACK", [])
+    :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
+  end
+
+  test "prepared statements outlive transaction commit", context do
+    :ok = query("CREATE TABLE test_commit (id int, text text)", [])
+    :ok = query("BEGIN", [])
+    :ok = query("INSERT INTO test_commit VALUES(?, ?)", [1, "test1"])
+    :ok = query("COMMIT", [])
+    :ok = query("INSERT INTO test_commit VALUES(?, ?)", [2, "test2"])
+  end
+
 end
