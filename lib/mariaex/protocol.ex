@@ -59,12 +59,12 @@ defmodule Mariaex.Protocol do
           {true, true} ->
             %{ s | state: :prepare_send_2, parameter_types: Enum.reverse(definitions) }
           {true, false} ->
-            send_execute(%{s | parameter_types: Enum.reverse(definitions)})
+            send_execute_new(%{s | parameter_types: Enum.reverse(definitions)})
           {false, true} ->
-            send_execute(s)
+            send_execute_new(s)
         end
       :prepare_send_2 ->
-        send_execute(s)
+        send_execute_new(s)
       :execute_send ->
         %{ s | state: :rows, substate: :bin_rows, types: Enum.reverse(definitions) }
     end
@@ -157,6 +157,7 @@ defmodule Mariaex.Protocol do
       true ->
         case Cache.lookup(s.cache, statement) do
           {id, parameter_types} ->
+            Cache.update(s.cache, statement, {id, parameter_types})
             send_execute(%{ s | statement_id: id, statement: statement, parameters: params,
                                 parameter_types: parameter_types, state: :prepare_send, rows: []})
           nil ->
@@ -172,9 +173,12 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp send_execute(s = %{statement: statement, statement_id: id, parameters: parameters,
-                          parameter_types: parameter_types, cache: cache, sock: sock}) do
+  defp send_execute_new(s = %{statement: statement, statement_id: id, parameter_types: parameter_types, cache: cache, sock: sock}) do
     Cache.insert(cache, statement, {id, parameter_types}, &close_statement(&1, &2, sock))
+    send_execute(s)
+  end
+
+  defp send_execute(s = %{statement_id: id, parameters: parameters, parameter_types: parameter_types}) do
     if length(parameters) == length(parameter_types) do
       parameters = Enum.zip(parameter_types, parameters)
       try do

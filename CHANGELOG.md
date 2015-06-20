@@ -1,3 +1,8 @@
+# 0.2.2-dev
+
+* Bug fixes
+  * do not close statement, if it is cached, and latest used too
+
 # 0.2.1
 
 * Bug fixes

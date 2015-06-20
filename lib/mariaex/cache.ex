@@ -26,6 +26,10 @@ defmodule Mariaex.Cache do
     :ets.insert(cache, {statement, timestamp, data})
   end
 
+  def update({size, cache}, statement, data) do
+    :ets.insert(cache, {statement, timestamp, data})
+  end
+
   defp remove_oldest(cache, cleanup) do
     {statement, _, data} = :ets.foldl(fn({statement, timestamp, data}, nil) ->
                                           {statement, timestamp, data}
