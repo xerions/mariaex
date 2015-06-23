@@ -1,3 +1,9 @@
+# 0.2.3-dev
+
+* Bug fixes
+  * fix parsing of date 0000-00-00
+  * allow saving dates, that have year less as 1000, due time is another format as date
+
 # 0.2.2
 
 * Bug fixes

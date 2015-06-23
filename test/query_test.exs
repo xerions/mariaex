@@ -190,17 +190,20 @@ defmodule QueryTest do
   end
 
   test "encode and decode date", context do
-    date = {2010, 10, 17}
+    date0 = {2010, 10, 17}
+    date1 = {0, 0, 0}
     table = "test_dates"
 
     sql = ~s{CREATE TABLE #{table} (id int, d date)}
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, d) VALUES (?, ?)}
-    :ok = query(insert, [1, date])
+    :ok = query(insert, [1, date0])
+    :ok = query(insert, [2, date1])
 
-    assert query("SELECT d FROM #{table} WHERE id = 1", []) == [{date}]
-    assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [{date}]
+    assert query("SELECT d FROM #{table} WHERE id = 1", []) == [{date0}]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [{date0}]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [{date1}]
   end
 
   test "encode and decode time", context do
