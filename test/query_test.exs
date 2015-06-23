@@ -42,16 +42,27 @@ defmodule QueryTest do
     :ok = query(insert, [true, string, text, binary])
 
     # Boolean
-    assert query("SELECT active from #{table} WHERE id = ?", [1]) == [{true}]
+    assert query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", []) == [{1}]
 
     # String
-    assert query("SELECT title from #{table} WHERE id = ?", [1]) == [{string}]
+    assert query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", []) == [{string}]
 
     # Text
-    assert query("SELECT body from #{table} WHERE id = ?", [1]) == [{text}]
+    assert query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", []) == [{text}]
 
     # Binary
-    assert query("SELECT data from #{table} WHERE id = ?", [1]) == [{binary}]
+    assert query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", []) == [{binary}]
+  end
+
+  test "booleen and tiny int tests", context do
+    table = "boolean_test"
+    :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint)", [])
+
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 127])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, -128])
+
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [{0, 127}]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [{1, -128}]
   end
 
   test "support numeric data types using prepared statements", context do
@@ -100,7 +111,7 @@ defmodule QueryTest do
 
     # Boolean
     :ok = query("INSERT INTO #{table} (active) values (?)", [true])
-    assert [{true}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
+    assert [{1}] = query("SELECT active from #{table} WHERE id = LAST_INSERT_ID()", [])
 
     # Integer
     :ok = query("INSERT INTO #{table} (count) values (?)", [integer])

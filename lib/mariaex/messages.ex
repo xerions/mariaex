@@ -36,16 +36,15 @@ defmodule Mariaex.Messages do
     defmacro unquote(command)(), do: unquote(number)
   end
 
-  @types [boolean:
-           [field_type_tiny: 0x01],
-          float:
+  @types [float:
            [field_type_float: 0x04,
             field_type_double: 0x05],
           decimal:
-          [field_type_decimal: 0x00,
-           field_type_newdecimal: 0xf6],
+           [field_type_decimal: 0x00,
+            field_type_newdecimal: 0xf6],
           integer:
-           [field_type_short: 0x02,
+           [field_type_tiny: 0x01,
+            field_type_short: 0x02,
             field_type_long: 0x03,
             field_type_int24: 0x09,
             field_type_year: 0x0d,
@@ -293,18 +292,9 @@ defmodule Mariaex.Messages do
   defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
   defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet), do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:boolean, :field_type_tiny}, packet),        do: parse_boolean_packet(packet)
   defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
   defp handle_decode_bin_rows({:float, :field_type_float}, packet),         do: parse_float_packet(packet, 32)
   defp handle_decode_bin_rows({:float, :field_type_double}, packet),        do: parse_float_packet(packet, 64)
-
-  defp parse_boolean_packet(packet) do
-    << value, rest :: binary >> = packet
-    case value do
-      1 -> {true, rest}
-      0 -> {false, rest}
-    end
-  end
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet

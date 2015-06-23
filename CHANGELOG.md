@@ -1,8 +1,11 @@
-# 0.2.3-dev
+# 0.3.0
 
 * Bug fixes
   * fix parsing of date 0000-00-00
   * allow saving dates, that have year less as 1000, due time is another format as date
+
+* Backwards incompatible changes
+  * tiny integers are no more automaticly decoded as booleans
 
 # 0.2.2
 
