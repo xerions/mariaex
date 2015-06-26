@@ -232,6 +232,7 @@ defmodule QueryTest do
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
     assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [{time, {10, 14, 16, 0}}]
     assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [{time, {10, 14, 16, 0}}]
+    assert query("SELECT time('00:00:00')", []) == [{{0, 0, 0, 0}}]
   end
 
   test "encode and decode datetime", context do
