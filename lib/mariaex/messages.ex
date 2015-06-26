@@ -314,6 +314,8 @@ defmodule Mariaex.Messages do
 
   defp parse_time_packet(packet) do
     case packet do
+      << 0 :: 8-little, rest :: binary >> ->
+        {{0, 0, 0, 0}, rest}
       << 8 :: 8-little, _ :: 8-little, _ :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
         {{hour, min, sec, 0}, rest}
      << 12::8, _ :: 32-little, _ :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
