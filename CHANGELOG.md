@@ -1,3 +1,11 @@
+# 0.3.1
+
+* Enhancments
+  * add keepalive to connection, per default is disabled
+
+* Bug fixes
+  * fix parsing of time 00-00-00
+
 # 0.3.0
 
 * Bug fixes

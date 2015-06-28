@@ -27,6 +27,10 @@ defmodule Mariaex.Protocol do
                 @client_transactions    ||| @client_secure_connection ||| @client_multi_statements |||
                 @client_multi_results   ||| @client_deprecate_eof
 
+  def dispatch(packet(msg: ok_resp()), state = %{state: :ping}) do
+    Connection.pong(state) |> put_in([:state], :running)
+  end
+
   def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = _packet, %{state: :handshake, opts: opts} = s) do
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
     password = opts[:password]
@@ -68,6 +72,15 @@ defmodule Mariaex.Protocol do
       :execute_send ->
         %{ s | state: :rows, substate: :bin_rows, types: Enum.reverse(definitions) }
     end
+  end
+
+  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state = %{statement: statement, state: s})
+   when s in [:handshake_send, :query_send, :execute_send] do
+    command = get_command(statement)
+    rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
+    result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
+    {_, state} = Connection.reply(result, state)
+    %{ state | state: :running, substate: nil, statement_id: nil}
   end
 
   def dispatch(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state = %{statement: statement, state: s})
@@ -149,6 +162,11 @@ defmodule Mariaex.Protocol do
   defp msg_send(msg, {sock_mod, sock}, seqnum) do
     data = encode(msg, seqnum)
     sock_mod.send(sock, data)
+  end
+
+  def ping(s) do
+    msg_send(text_cmd(command: com_ping, statement: ""), s, 0)
+    %{s | state: :ping}
   end
 
   def send_query(statement, params, s) do

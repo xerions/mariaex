@@ -8,6 +8,10 @@ defmodule Mariaex.Connection do
   alias Mariaex.Messages
 
   @timeout 5000
+  @cache_size 100
+  @keepalive false
+  @keepalive_interval 60000
+  @keepalive_timeout @timeout
 
   defmacrop raiser(result) do
     quote do
@@ -37,10 +41,13 @@ defmodule Mariaex.Connection do
     * `:decoder` - Custom decoder function;
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
-    * `:timeout` - Connect timeout in milliseconds (default: 5000);
+    * `:timeout` - Connect timeout in milliseconds (default: #{@timeout});
     * `:charset` - Database encoding (default: "utf8");
     * `:socket_options` - Options to be given to the underlying socket;
-    * `:cache_size` - Prepared statement cache size (default: 100);
+    * `:cache_size` - Prepared statement cache size (default: #{@cache_size});
+    * `:keepalive` - Enable keepalive (default: false), please note, it is not considered stable API;
+    * `:keepalive_interval` - Keepalive interval (default: #{@keepalive_interval});
+    * `:keepalive_timeout` - Keepalive timeout (default: #{@timeout});
 
   ## Function signatures
 
@@ -66,6 +73,9 @@ defmodule Mariaex.Connection do
         case GenServer.call(pid, {:connect, opts}, timeout) do
           {:ok, _} ->
             Process.link(pid)
+            if opts[:keepalive] do
+              GenServer.cast(pid, {:keepalive, opts[:keepalive_interval] || @keepalive_interval, opts[:keepalive_timeout] || @keepalive_timeout})
+            end
             query(pid, "SET CHARACTER SET " <> (opts[:charset] || "utf8"))
             {:ok, pid}
           err ->
@@ -143,6 +153,7 @@ defmodule Mariaex.Connection do
     {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
             backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
             parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil,
+            keepalive: nil, keepalive_send: nil, last_answer: nil,
             cache: Mariaex.Cache.new(cache_size)}}
   end
 
@@ -177,23 +188,42 @@ defmodule Mariaex.Connection do
     end
   end
 
-  def handle_call(command, from, %{state: state} = s) do
+  def handle_call(command, from, s) do
     s = update_in s.queue, &:queue.in({command, from}, &1)
+    check_next(s)
+  end
 
-    if state == :running do
-      {:noreply, next(s)}
-    else
-      {:noreply, s}
-    end
+  def handle_cast({:keepalive, keepalive_interval, keepalive_timeout}, %{} = s) do
+    Process.send_after(self, :ping, keepalive_interval)
+    {:noreply, %{s | keepalive: {keepalive_interval, keepalive_timeout}}}
   end
 
   def handle_info({:tcp_closed, _}, s) do
     error(%Mariaex.Error{message: "connection closed"}, s)
   end
 
+  def handle_info(:ping, s = %{keepalive: {keepalive_interval, keepalive_timeout}}) do
+    last_answer = :os.timestamp |> :timer.now_diff(s.last_answer) |> div(1000)
+    if last_answer >= keepalive_interval do
+      s = update_in s.queue, &:queue.in(:ping, &1)
+      check_next(%{s | keepalive_send: Process.send_after(self, :ping_timeout, keepalive_timeout)})
+    else
+      Process.send_after(self, :ping, keepalive_interval - last_answer)
+      s
+    end
+  end
+
+  def handle_info(:ping_timeout, s) do
+    error(%Mariaex.Error{message: "keepalive timeout"}, s)
+  end
+
   def handle_info(sock_message, %{sock: {sock_mod, sock}} = s) do
     s = sock_mod.receive(sock, sock_message) |> process(s)
     sock_mod.next(sock)
+    check_next(s)
+  end
+
+  defp check_next(s) do
     if s.state == :running do
       {:noreply, next(s)}
     else
@@ -205,6 +235,8 @@ defmodule Mariaex.Connection do
     case :queue.out(queue) do
       {{:value, {command, _from}}, _queue} ->
         command(command, s)
+      {{:value, :ping}, _queue} ->
+        Protocol.ping(s)
       {:empty, _queue} ->
         s
     end
@@ -224,11 +256,18 @@ defmodule Mariaex.Connection do
     end
   end
 
+  def pong(%{queue: queue, keepalive: {keepalive_interval, _}, keepalive_send: timer} = state) do
+    queue = :queue.drop(queue)
+    :erlang.cancel_timer(timer)
+    Process.send_after(self, :ping, keepalive_interval)
+    %{state | queue: queue, last_answer: :os.timestamp, keepalive_send: nil}
+  end
+
   def reply(reply, %{queue: queue} = state) do
     case :queue.out(queue) do
       {{:value, queue_entry}, queue} ->
         reply(reply, queue_entry)
-        {true, %{state | queue: queue}}
+        {true, %{state | queue: queue, last_answer: :os.timestamp}}
       {:empty, _queue} ->
         {false, state}
     end
