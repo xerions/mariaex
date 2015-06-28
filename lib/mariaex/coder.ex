@@ -55,7 +55,7 @@ defmodule Mariaex.Coder do
   @empty_stage %{head: [], body: nil}
 
   defp split_to_stages(spec) do
-    {last, other} = Enum.reduce(spec, {@empty_stage, []}, fn(kv = {key, _, [value | _]}, {actual = %{head: head, body: body}, all}) ->
+    {last, other} = Enum.reduce(spec, {@empty_stage, []}, fn(kv = {_key, _, [value | _]}, {actual = %{head: head, body: _body}, all}) ->
       cond do
         is_integer(value) ->
           {%{actual | head: [kv | head]}, all}

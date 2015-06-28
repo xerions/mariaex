@@ -1,4 +1,5 @@
 defmodule Mariaex.Cache do
+  import :os, only: [timestamp: 0]
 
   def new(size) do
     {size, :ets.new(:cache, [])}
@@ -38,10 +39,5 @@ defmodule Mariaex.Cache do
                                       end, nil, cache)
     cleanup.(statement, data)
     :ets.delete(cache, statement)
-  end
-
-  defp timestamp do
-    {mega, secs, _} = :erlang.now
-    mega * 1000000 + secs
   end
 end
