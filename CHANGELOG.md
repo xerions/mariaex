@@ -1,3 +1,8 @@
+# 0.3.2
+
+* Bug fixes
+  * fix result statement for ping, if no ping needed
+
 # 0.3.1
 
 * Enhancments

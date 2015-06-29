@@ -209,7 +209,7 @@ defmodule Mariaex.Connection do
       check_next(%{s | keepalive_send: Process.send_after(self, :ping_timeout, keepalive_timeout)})
     else
       Process.send_after(self, :ping, keepalive_interval - last_answer)
-      s
+      {:noreply, s}
     end
   end
 
