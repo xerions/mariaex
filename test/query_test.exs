@@ -404,19 +404,23 @@ defmodule QueryTest do
   end
 
   test "prepared statements outlive transaction rollback", context do
-    :ok = query("CREATE TABLE test_rollback (id int, text text)", [])
-    :ok = query("BEGIN", [])
-    :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
-    :ok = query("ROLLBACK", [])
-    :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("CREATE TABLE test_rollback (id int, text text)", [])
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("ROLLBACK", [])
+    assert :ok = query("INSERT INTO test_rollback VALUES(?, ?)", [1, "test1"])
   end
 
   test "prepared statements outlive transaction commit", context do
-    :ok = query("CREATE TABLE test_commit (id int, text text)", [])
-    :ok = query("BEGIN", [])
-    :ok = query("INSERT INTO test_commit VALUES(?, ?)", [1, "test1"])
-    :ok = query("COMMIT", [])
-    :ok = query("INSERT INTO test_commit VALUES(?, ?)", [2, "test2"])
+    assert :ok = query("CREATE TABLE test_commit (id int, text text)", [])
+    assert :ok = query("BEGIN", [])
+    assert :ok = query("INSERT INTO test_commit VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("COMMIT", [])
+    assert :ok = query("INSERT INTO test_commit VALUES(?, ?)", [2, "test2"])
+  end
+
+  test "test rare commands in prepared statements", context do
+    assert _ = query("SHOW FULL PROCESSLIST", [])
   end
 
 end

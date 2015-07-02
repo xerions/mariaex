@@ -171,7 +171,7 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, params, s) do
     command = get_command(statement)
-    case command in [:insert, :select, :update, :delete, :call] do
+    case command in [:insert, :select, :update, :delete, :show, :call] do
       true ->
         case Cache.lookup(s.cache, statement) do
           {id, parameter_types} ->
