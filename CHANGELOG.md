@@ -1,3 +1,9 @@
+# 0.4.1
+
+* Enhancments
+  * decode values on client side
+  * add possibility to do decoding later
+
 # 0.4.0
 
 * Bug fixes
