@@ -1,4 +1,4 @@
-# 0.4.0-dev
+# 0.4.0
 
 * Bug fixes
   * add SHOW to supported prepared statements commands
