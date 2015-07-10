@@ -271,7 +271,7 @@ defmodule Mariaex.Messages do
     decode_bin_rows(rest, fields, nullbin, [])
   end
   def decode_bin_rows(<<>>, [], _, acc) do
-    Enum.reverse(acc) |> List.to_tuple
+    Enum.reverse(acc)
   end
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])

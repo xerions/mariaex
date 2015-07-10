@@ -1,3 +1,11 @@
+# 0.4.0-dev
+
+* Bug fixes
+  * add SHOW to supported prepared statements commands
+
+* Backwards incompatible changes
+  * rows returned as lists, not as tuples anymore
+
 # 0.3.2
 
 * Bug fixes
