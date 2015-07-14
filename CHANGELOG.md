@@ -1,3 +1,8 @@
+# 0.4.2
+
+* Enhancements
+  * Revert client side decoding as affects performance negatively
+
 # 0.4.1
 
 * Enhancments

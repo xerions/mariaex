@@ -115,8 +115,6 @@ defmodule Mariaex.Connection do
     * `:timeout` - Call timeout (default: `#{@timeout}`)
     * `:param_types` - A list of type names for the parameters
     * `:result_types` - A list of type names for the result rows
-    * `:decode` - If the result set decoding should be done automatically
-       (`:auto`) or manually (`:manual`) via `decode/2`. Defaults to `:auto`.
 
   ## Examples
 
@@ -136,15 +134,7 @@ defmodule Mariaex.Connection do
   def query(pid, statement, params \\ [], opts \\ []) do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
-    case GenServer.call(pid, message, timeout) do
-      {:ok, %Mariaex.Result{} = res} ->
-        case Keyword.get(opts, :decode, :auto) do
-          :auto   -> {:ok, decode(res)}
-          :manual -> {:ok, res}
-        end
-      error ->
-        error
-    end
+    GenServer.call(pid, message, timeout)
   end
 
   @doc """
@@ -154,21 +144,6 @@ defmodule Mariaex.Connection do
 
   def query!(pid, statement, params \\ [], opts \\ []) do
     query(pid, statement, params, opts) |> raiser
-  end
-
-  @doc """
-  Decodes a result set.
-
-  It is a no-op if the result was already decoded.
-  """
-  def decode(_, mapper \\ fn x -> x end)
-  def decode(%Mariaex.Result{decoder: :done} = result, _), do: result
-  def decode(%Mariaex.Result{rows: rows, decoder: types} = result, mapper) do
-    rows = rows |> Enum.reduce([], &([(Mariaex.Messages.decode_bin_rows(&1, types) |> mapper.()) | &2]))
-    %{result | columns: (for {type, _} <- types, do: type),
-               rows: rows,
-               num_rows: length(rows),
-               decoder: :done}
   end
 
   ### GEN_SERVER CALLBACKS ###

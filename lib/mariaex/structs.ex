@@ -15,10 +15,9 @@ defmodule Mariaex.Result do
     columns:  [String.t] | nil,
     rows:     [tuple] | nil,
     last_insert_id: integer,
-    num_rows: integer,
-    decoder: nil | [tuple] | :done}
+    num_rows: integer}
 
-  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :decoder]
+  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows]
 end
 
 defmodule Mariaex.Error do

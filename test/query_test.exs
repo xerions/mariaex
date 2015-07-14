@@ -1,17 +1,16 @@
 defmodule QueryTest do
   use ExUnit.Case, async: true
   import Mariaex.TestHelper
-  alias Mariaex.Connection
 
   setup do
     opts = [ database: "mariaex_test", username: "root" ]
-    {:ok, pid} = Connection.start_link(opts)
+    {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end
 
   test "simple query using password connection" do
     opts = [ database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass" ]
-    {:ok, pid} = Connection.start_link(opts)
+    {:ok, pid} = Mariaex.Connection.start_link(opts)
 
     context = [pid: pid]
 
@@ -321,7 +320,7 @@ defmodule QueryTest do
   end
 
   test "result struct on select", context do
-    {:ok, res} = Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
 
     assert %Mariaex.Result{} = res
     assert res.command == :select
@@ -335,19 +334,19 @@ defmodule QueryTest do
     :ok = query(~s{CREATE TABLE #{table} (num int)}, [])
     :ok = query(~s{INSERT INTO #{table} (num) VALUES (?)}, [1])
 
-    {:ok, res} = Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
     assert %Mariaex.Result{} = res
     assert res.command == :update
     assert res.num_rows == 1
 
-    {:ok, res} = Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
     assert %Mariaex.Result{} = res
     assert res.command == :update
     assert res.num_rows == 1
   end
 
   test "error struct", context do
-    {:error, %Mariaex.Error{}} = Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
+    {:error, %Mariaex.Error{}} = Mariaex.Connection.query(context[:pid], "SELECT 123 + `deertick`", [])
   end
 
   test "insert", context do
@@ -421,19 +420,7 @@ defmodule QueryTest do
   end
 
   test "test rare commands in prepared statements", context do
-    assert [_ | _] = query("SHOW FULL PROCESSLIST", [])
-  end
-
-  test "multi row result struct with manual decoding", context do
-    assert :ok = query("CREATE TABLE test_manuall_decoding (id int, text text)", [])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [1, "test1"])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [2, "test2"])
-    assert {:ok, res} = Connection.query(context[:pid], "SELECT * FROM test_manuall_decoding ORDER BY id", [], decode: :manual)
-
-    assert res.rows == [<<0, 0, 2, 0, 0, 0, 5, 116, 101, 115, 116, 50>>,
-                        <<0, 0, 1, 0, 0, 0, 5, 116, 101, 115, 116, 49>>]
-    assert [[1, "test1"], [2, "test2"]] == Connection.decode(res).rows
-    assert [[1], [2]] == Connection.decode(res, fn([id, _]) -> [id] end).rows
+    assert _ = query("SHOW FULL PROCESSLIST", [])
   end
 
 end
