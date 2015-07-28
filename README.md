@@ -1,4 +1,4 @@
-Mariaex [![Build Status](https://travis-ci.org/xerions/mariaex.svg)](https://travis-ci.org/xerions/mariaex)
+Mariaex [![Build Status](https://travis-ci.org/xerions/mariaex.svg)](https://travis-ci.org/xerions/mariaex) [![Coverage Status](https://coveralls.io/repos/xerions/mariaex/badge.svg?branch=master&service=github)](https://coveralls.io/github/xerions/mariaex?branch=master)
 =======
 
 ## Usage

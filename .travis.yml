@@ -1,10 +1,13 @@
 language: elixir
 elixir:
-  - 1.0.0
+  - 1.0.5
 otp_release:
-  - 17.0
+  - 17.5
+  - 18.0
 services: mysql
 notifications:
   recipients:
     - elixmoon@gmail.com
     - jquadrin@gmail.com
+sudo: false
+script: "MIX_ENV=test mix do deps.get, deps.compile, test --cover"

@@ -8,6 +8,7 @@ defmodule Mariaex.Mixfile do
      deps: deps,
      name: "Mariaex",
      source_url: "https://github.com/liveforeverx/mariaex",
+     test_coverage: [tool: Coverex.Task, coveralls: true],
      description: description,
      package: package]
   end
@@ -18,7 +19,8 @@ defmodule Mariaex.Mixfile do
   end
 
   defp deps do
-    [{:decimal, "~> 1.0"}]
+    [{:decimal, "~> 1.0"},
+     {:coverex, "~> 1.4.1", only: :test}]
   end
 
   defp description do
