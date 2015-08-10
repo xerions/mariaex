@@ -22,10 +22,17 @@ defmodule Mariaex.Protocol do
   @client_multi_results     0x00020000
   @client_deprecate_eof     0x01000000
 
-  @capabilities @client_long_password   ||| @client_found_rows        ||| @client_long_flag |||
-                @client_connect_with_db ||| @client_local_files       ||| @client_protocol_41 |||
-                @client_transactions    ||| @client_secure_connection ||| @client_multi_statements |||
-                @client_multi_results   ||| @client_deprecate_eof
+  @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
+                @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
+                @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
+                @client_deprecate_eof
+
+  defp capabilities(opts) do
+    case opts[:skip_database] do
+      true -> {"", @capabilities}
+      _    -> {opts[:database], @capabilities ||| @client_connect_with_db}
+    end
+  end
 
   def dispatch(packet(msg: ok_resp()), state = %{state: :ping}) do
     Connection.pong(state) |> put_in([:state], :running)
@@ -39,8 +46,9 @@ defmodule Mariaex.Protocol do
       ""  -> ""
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
+    {database, capabilities} = capabilities(opts)
     msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: opts[:database], capability_flags: @capabilities,
+                         database: database, capability_flags: capabilities,
                          max_size: @maxpacketbytes, character_set: 8)
     msg_send(msg, s, seqnum + 1)
     %{ s | state: :handshake_send }

@@ -34,7 +34,8 @@ defmodule Mariaex.Connection do
     * `:hostname` - Server hostname (default: MDBHOST env variable, then localhost);
     * `:port` - Server port (default: 3306);
     * `:sock_type` - Socket type (default: :tcp);
-    * `:database` - Database (required);
+    * `:database` - Database (required, if `:skip_database` not true);
+    * `:skip_database` - Flag to set connection without database;
     * `:username` - Username (default: MDBUSER env variable, then USER env var);
     * `:password` - User password (default MDBPASSWORD);
     * `:encoder` - Custom encoder function;

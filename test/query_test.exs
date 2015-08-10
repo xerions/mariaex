@@ -21,6 +21,16 @@ defmodule QueryTest do
     assert query("SELECT * FROM test_pass", []) == [[27, "foobar"]]
   end
 
+  test "connection without database" do
+    opts = [ username: "mariaex_user", password: "mariaex_pass", skip_database: true ]
+    {:ok, pid} = Mariaex.Connection.start_link(opts)
+
+    context = [pid: pid]
+
+    assert :ok = query("CREATE DATABASE database_from_connection", [])
+    assert [] = query("DROP DATABASE database_from_connection", [])
+  end
+
   test "queries are dequeued after previous query is processed", context do
     assert {:timeout, _} =
            catch_exit(query("SLEEP(0.1", [], timeout: 0))

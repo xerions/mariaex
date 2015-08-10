@@ -1,3 +1,8 @@
+# 0.4.3
+
+* Enhancements
+  * add possibility to start databaseless connection
+
 # 0.4.2
 
 * Enhancements
