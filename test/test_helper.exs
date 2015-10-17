@@ -54,4 +54,10 @@ defmodule Mariaex.TestHelper do
       end
     end
   end
+
+  defmacro async_query(stat, params) do
+    quote do
+      Mariaex.Connection.async_query(var!(context)[:pid], unquote(stat), unquote(params))
+    end
+  end
 end

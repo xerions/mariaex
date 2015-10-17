@@ -20,7 +20,7 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:coverex, "~> 1.4.1", only: :test}]
+     {:coverex, "~> 1.4.3", only: :test}]
   end
 
   defp description do
