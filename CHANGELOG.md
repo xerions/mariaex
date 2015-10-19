@@ -1,3 +1,11 @@
+# 0.5.0
+
+* Enhancements
+  * add async_query
+
+* Backwards incompatible changes
+  * depends on elixir 1.1, because of GenServer.whereis/1
+
 # 0.4.3
 
 * Enhancements
