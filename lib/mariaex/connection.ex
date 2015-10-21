@@ -163,8 +163,14 @@ defmodule Mariaex.Connection do
   """
   def async_query(pid, statement, params \\ []) do
     message = {:query, statement, params, []}
-    process = GenServer.whereis(pid) ||
-      raise ArgumentError, "No process is associated with #{inspect pid}"
+    process = cond do
+        is_pid(pid) ->
+          pid
+        function_exported?(GenServer, :whereis, 1) ->
+          GenServer.whereis(pid) || raise ArgumentError, "No process is associated with #{inspect pid}"
+        true ->
+          raise ArgumentError, "Requires Elixir 1.1 when passing server name as first argument"
+      end
     monitor = Process.monitor(process)
     from = {self(), monitor}
 
