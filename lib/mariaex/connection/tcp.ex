@@ -10,12 +10,14 @@ defmodule Mariaex.Connection.Tcp do
         buffer = buffer
           |> max(sndbuf)
           |> max(recbuf)
-        :ok = :inet.setopts(sock, [buffer: buffer, active: :once])
+        :ok = :inet.setopts(sock, [buffer: buffer, active: :false])
         ok
       {:error, _} = error ->
         error
     end
   end
+
+  def recv(sock, bytes, timeout), do: :gen_tcp.recv(sock, bytes, timeout)
 
   def receive(_sock, {:tcp, _, blob}), do: blob
 

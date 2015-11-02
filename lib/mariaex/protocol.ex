@@ -5,10 +5,16 @@ defmodule Mariaex.Protocol do
   alias Mariaex.Cache
   import Mariaex.Messages
 
-  use Bitwise, only_operators: true
+  use Bitwise
+
+  @timeout 5000
+  @keepalive_interval 60000
+  @keepalive_timeout @timeout
+  @cache_size 100
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
+  @mysql_old_password :mysql_old_password
 
   @client_long_password     0x00000001
   @client_found_rows        0x00000002
@@ -27,6 +33,63 @@ defmodule Mariaex.Protocol do
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
                 @client_deprecate_eof
 
+  def init(opts) do
+    sock_mod   = Keyword.fetch!(opts, :sock_mod)
+    timeout    = opts[:timeout] || @timeout
+    host       = Keyword.fetch!(opts, :hostname)
+    host       = if is_binary(host), do: String.to_char_list(host), else: host
+    port       = opts[:port] || 3306
+    timeout    = opts[:timeout] || @timeout
+    cache_size = opts[:cache_size] || @cache_size
+    keepalive  = {opts[:keepalive_interval] || @keepalive_interval,
+                  opts[:keepalive_timeout]  || @keepalive_timeout}
+    s = %{sock: nil, tail: "", state: nil, substate: nil, state_data: nil, parameters: %{},
+          backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
+          parameter_types: [], types: [], queue: :queue.new, opts: opts, statement_id: nil, handshake: nil,
+          keepalive: keepalive, keepalive_send: nil, last_answer: nil, cache: Mariaex.Cache.new(cache_size)}
+    case sock_mod.connect(host, port, opts[:socket_options] || [], timeout) do
+      {:ok, sock} ->
+        s = %{s | state: :handshake, sock: {sock_mod, sock}}
+        connect(s, timeout)
+      {:error, reason} ->
+        {:stop, %Mariaex.Error{message: "tcp connect: #{reason}"}}
+    end
+  end
+
+  defp connect(state = %{opts: opts, sock: {sock_mod, sock}}, timeout) do
+    case passive_receive(state, timeout) do
+      {:error, error} ->
+        {:stop, error}
+      {:ok, state} ->
+        statement = "SET CHARACTER SET " <> (opts[:charset] || "utf8")
+        case send_text_query(state, statement) |> passive_receive(timeout) do
+          {:error, error} ->
+            {:stop, error}
+          {:ok, state} ->
+            sock_mod.next(sock)
+            {:ok, state}
+        end
+    end
+  end
+
+  defp passive_receive(s = %{state: state, substate: substate}, timeout) do
+    case msg_recv(s.sock, substate || state, timeout) do
+      {:ok, packet} ->
+        case dispatch(packet, s) do
+          {:error, error} ->
+            {:error, error}
+          state = %{state: new_state} ->
+            if new_state == :running do
+              {:ok, state}
+            else
+              passive_receive(state, timeout)
+            end
+        end
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
   defp capabilities(opts) do
     case opts[:skip_database] do
       true -> {"", @capabilities}
@@ -40,18 +103,21 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = _packet, %{state: :handshake, opts: opts} = s) do
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
-    password = opts[:password]
-    scramble = case password do
-      nil -> ""
-      ""  -> ""
-      _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
+    authorization(plugin, %{s | handshake: %{salt: {salt1, salt2}, seqnum: seqnum}})
+  end
+
+  def dispatch(packet(msg: :mysql_old_password), state = %{opts: opts, handshake: handshake}) do
+    if opts[:insecure_auth] do
+      password = opts[:password]
+      %{salt: {salt1, salt2}, seqnum: seqnum} = handshake
+      password = password(@mysql_old_password, password, <<salt1 :: binary, salt2 :: binary>>)
+      # TODO: rethink seqnum handling
+      msg_send(old_password(password: password), state, seqnum + 3)
+      state
+    else
+      {:error, %Mariaex.Error{message: "MySQL server is requesting the old and insecure pre-4.1 auth mechanism. " <>
+                                       "Upgrade the user password or use the `insecure_auth: true` option."}}
     end
-    {database, capabilities} = capabilities(opts)
-    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: database, capability_flags: capabilities,
-                         max_size: @maxpacketbytes, character_set: 8)
-    msg_send(msg, s, seqnum + 1)
-    %{ s | state: :handshake_send }
   end
 
   def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{state: s})
@@ -143,8 +209,24 @@ defmodule Mariaex.Protocol do
     %{ state | state: :running, substate: nil, statement_id: nil}
   end
 
+  defp authorization(plugin, %{handshake: %{seqnum: seqnum, salt: {salt1, salt2}}, opts: opts} = s) do
+    password = opts[:password]
+    scramble = case password do
+      nil -> ""
+      ""  -> ""
+      _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
+    end
+    {database, capabilities} = capabilities(opts)
+    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
+                         database: database, capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8)
+    msg_send(msg, s, seqnum + 1)
+    %{ s | state: :handshake_send }
+  end
+
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
-  defp password("", password, salt), do: mysql_native_password(password, salt)
+  defp password("", password, salt),                  do: mysql_native_password(password, salt)
+  defp password(@mysql_old_password, password, salt), do: mysql_old_password(password, salt)
 
   defp mysql_native_password(password, salt) do
     stage1 = :crypto.hash(:sha, password)
@@ -160,6 +242,45 @@ defmodule Mariaex.Protocol do
     (for {e1, e2} <- List.zip([:erlang.binary_to_list(b1), :erlang.binary_to_list(b2)]), do: e1 ^^^ e2) |> :erlang.list_to_binary
   end
 
+  def mysql_old_password(password, salt) do
+    {p1, p2} = hash(password)
+    {s1, s2} = hash(salt)
+    seed1 = bxor(p1, s1)
+    seed2 = bxor(p2, s2)
+    list = rnd(9, seed1, seed2)
+    {l, [extra]} = Enum.split(list, 8)
+    l |> Enum.map(&bxor(&1, extra - 64)) |> to_string
+  end
+
+  defp hash(bin) when is_binary(bin), do: bin |> to_char_list |> hash
+  defp hash(s), do: hash(s, 1345345333, 305419889, 7)
+  defp hash([c | s], n1, n2, add) do
+    n1 = bxor(n1, (((band(n1, 63) + add) * c + n1 * 256)))
+    n2 = n2 + (bxor(n2 * 256, n1))
+    add = add + c
+    hash(s, n1, n2, add)
+  end
+  defp hash([], n1, n2, add) do
+    mask = bsl(1, 31) - 1
+    {band(n1, mask), band(n2, mask)}
+  end
+
+  defp rnd(n, seed1, seed2) do
+    mod = bsl(1, 30) - 1
+    rnd(n, [], rem(seed1, mod), rem(seed2, mod))
+  end
+  defp rnd(0, list, _, _) do
+    Enum.reverse(list)
+  end
+  defp rnd(n, list, seed1, seed2) do
+    mod = bsl(1, 30) - 1
+    seed1 = rem((seed1 * 3 + seed2), mod)
+    seed2 = rem((seed1 + seed2 + 33), mod)
+    float = (seed1 / mod) * 31
+    val = trunc(float) + 64
+    rnd(n - 1, [val | list], seed1, seed2)
+  end
+
   defp msg_send(msg, %{sock: {sock_mod, sock}}, seqnum), do: msg_send(msg, {sock_mod, sock}, seqnum)
 
   defp msg_send(msgs, {sock_mod, sock}, seqnum) when is_list(msgs) do
@@ -170,6 +291,21 @@ defmodule Mariaex.Protocol do
   defp msg_send(msg, {sock_mod, sock}, seqnum) do
     data = encode(msg, seqnum)
     sock_mod.send(sock, data)
+  end
+
+  defp msg_recv({sock_mod, sock}, decode_state, timeout) do
+    case sock_mod.recv(sock, 4, timeout) do
+      {:ok, << len :: size(24)-little-integer, seqnum :: size(8)-integer >> = header} ->
+        case sock_mod.recv(sock, len, timeout) do
+          {:ok, packet_body} ->
+            {packet, ""} = decode(header <> packet_body, decode_state)
+            {:ok, packet}
+          {:error, _} = error ->
+            error
+        end
+      {:error, _} = error ->
+        error
+    end
   end
 
   def ping(s) do
@@ -191,12 +327,16 @@ defmodule Mariaex.Protocol do
             %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
         end
       false when params == [] ->
-        msg_send(text_cmd(command: com_query, statement: statement), s, 0)
-        %{s | statement: statement, parameters: [], types: [], state: :query_send, substate: :column_count, rows: []}
+        send_text_query(s, statement)
       false ->
         {_, s} = Connection.reply({:error, %Mariaex.Error{message: "unsupported query"}}, s)
         %{ s | state: :running, substate: nil}
     end
+  end
+
+  defp send_text_query(s, statement) do
+    msg_send(text_cmd(command: com_query, statement: statement), s, 0)
+    %{s | statement: statement, parameters: [], types: [], state: :query_send, substate: :column_count, rows: []}
   end
 
   defp send_execute_new(s = %{statement: statement, statement_id: id, parameter_types: parameter_types, cache: cache, sock: sock}) do
@@ -223,8 +363,10 @@ defmodule Mariaex.Protocol do
     abort_statement(s, %Mariaex.Error{mariadb: %{code: code, message: message}})
   end
   defp abort_statement(s, error = %Mariaex.Error{}) do
-    {_, s} = Connection.reply({:error, error}, s)
-    close_statement(s)
+    case Connection.reply({:error, error}, s) do
+      {true, s}  -> close_statement(s)
+      {false, s} -> {:error, error}
+    end
   end
   defp abort_statement(s, error_msg) do
     abort_statement(s, %Mariaex.Error{message: error_msg})

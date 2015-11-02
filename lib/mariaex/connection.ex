@@ -3,15 +3,12 @@ defmodule Mariaex.Connection do
   Main API for Mariaex. This module handles the connection to .
   """
 
-  use GenServer
+  use Connection
   alias Mariaex.Protocol
   alias Mariaex.Messages
 
   @timeout 5000
-  @cache_size 100
   @keepalive false
-  @keepalive_interval 60000
-  @keepalive_timeout @timeout
 
   defmacrop raiser(result) do
     quote do
@@ -40,15 +37,18 @@ defmodule Mariaex.Connection do
     * `:password` - User password (default MDBPASSWORD);
     * `:encoder` - Custom encoder function;
     * `:decoder` - Custom decoder function;
+    * `:sync_connect` - Block in `start_link/1` until connection is set up (default: `false`)
     * `:formatter` - Function deciding the format for a type;
     * `:parameters` - Keyword list of connection parameters;
     * `:timeout` - Connect timeout in milliseconds (default: #{@timeout});
     * `:charset` - Database encoding (default: "utf8");
     * `:socket_options` - Options to be given to the underlying socket;
-    * `:cache_size` - Prepared statement cache size (default: #{@cache_size});
+    * `:cache_size` - Prepared statement cache size (default: 100);
     * `:keepalive` - Enable keepalive (default: false), please note, it is not considered stable API;
-    * `:keepalive_interval` - Keepalive interval (default: #{@keepalive_interval});
-    * `:keepalive_timeout` - Keepalive timeout (default: #{@timeout});
+    * `:keepalive_interval` - Keepalive interval (default: 60000);
+    * `:keepalive_timeout` - Keepalive timeout (default: 5000);
+    * `:insecure_auth` - Secure authorization (default: false)
+
 
   ## Function signatures
 
@@ -62,28 +62,13 @@ defmodule Mariaex.Connection do
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Mariaex.Error.t | term}
   def start_link(opts) do
     sock_type = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
-    cache_size = opts[:cache_size] || 100
     sock_mod = ("Elixir.Mariaex.Connection." <> sock_type) |> String.to_atom
     opts = opts
       |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
       |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
       |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
-    case GenServer.start(__MODULE__, [sock_mod, cache_size]) do
-      {:ok, pid} ->
-        timeout = opts[:timeout] || @timeout
-        case GenServer.call(pid, {:connect, opts}, timeout) do
-          {:ok, _} ->
-            Process.link(pid)
-            if opts[:keepalive] do
-              GenServer.cast(pid, {:keepalive, opts[:keepalive_interval] || @keepalive_interval, opts[:keepalive_timeout] || @keepalive_timeout})
-            end
-            query(pid, "SET CHARACTER SET " <> (opts[:charset] || "utf8"))
-            {:ok, pid}
-          err ->
-            err
-        end
-      err -> err
-    end
+      |> Keyword.put_new(:sock_mod, sock_mod)
+    Connection.start_link(__MODULE__, opts)
   end
 
   @doc """
@@ -95,7 +80,7 @@ defmodule Mariaex.Connection do
   """
   @spec stop(pid, Keyword.t) :: :ok
   def stop(pid, opts \\ []) do
-    GenServer.call(pid, :stop, opts[:timeout] || @timeout)
+    Connection.call(pid, :stop, opts[:timeout] || @timeout)
   end
 
   @doc """
@@ -135,7 +120,7 @@ defmodule Mariaex.Connection do
   def query(pid, statement, params \\ [], opts \\ []) do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
-    GenServer.call(pid, message, timeout)
+    Connection.call(pid, message, timeout)
   end
 
   @doc """
@@ -174,19 +159,27 @@ defmodule Mariaex.Connection do
     monitor = Process.monitor(process)
     from = {self(), monitor}
 
-    :ok = GenServer.cast(pid, {message, from})
+    :ok = Connection.cast(pid, {message, from})
     %Task{ref: monitor}
   end
 
-  ### GEN_SERVER CALLBACKS ###
+  ### CONNECTION CALLBACKS ###
 
   @doc false
-  def init([sock_mod, cache_size]) do
-    {:ok, %{sock: nil, tail: "", state: :ready, substate: nil, state_data: nil, parameters: %{},
-            backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
-            parameter_types: [], types: [], queue: :queue.new, opts: nil, statement_id: nil,
-            keepalive: nil, keepalive_send: nil, last_answer: nil,
-            cache: Mariaex.Cache.new(cache_size)}}
+  def init(opts) do
+    if opts[:sync_connect] do
+      sync_connect(opts)
+    else
+      {:connect, :init, opts}
+    end
+  end
+
+  @doc false
+  def connect(_, opts) do
+    case Protocol.init(opts) do
+      {:ok, _} = ok   -> ok
+      {:stop, reason} -> {:stop, reason, opts}
+    end
   end
 
   @doc false
@@ -259,6 +252,15 @@ defmodule Mariaex.Connection do
     check_next(s)
   end
 
+  ### PRIVATE FUNCTIONS ###
+
+  defp sync_connect(opts) do
+    case connect(:init, opts) do
+      {:ok, _} = ok      -> ok
+      {:stop, reason, _} -> {:stop, reason}
+    end
+  end
+
   defp check_next(s) do
     if s.state == :running do
       {:noreply, next(s)}
@@ -310,7 +312,7 @@ defmodule Mariaex.Connection do
   end
 
   def reply(reply, {_command, from}) do
-    GenServer.reply(from, reply)
+    Connection.reply(from, reply)
   end
 
   def error(error, state) do
