@@ -432,4 +432,16 @@ defmodule QueryTest do
   test "test rare commands in prepared statements", context do
     assert _ = query("SHOW FULL PROCESSLIST", [])
   end
+
+  test "multi row result struct with manual decoding", context do
+    assert :ok = query("CREATE TABLE test_manuall_decoding (id int, text text)", [])
+    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [2, "test2"])
+    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM test_manuall_decoding ORDER BY id", [], decode: :manual)
+
+    assert res.rows == [<<0, 0, 2, 0, 0, 0, 5, 116, 101, 115, 116, 50>>,
+                        <<0, 0, 1, 0, 0, 0, 5, 116, 101, 115, 116, 49>>]
+    assert [[1, "test1"], [2, "test2"]] == Mariaex.Connection.decode(res).rows
+    assert [[1], [2]] == Mariaex.Connection.decode(res, fn([id, _]) -> [id] end).rows
+  end
 end
