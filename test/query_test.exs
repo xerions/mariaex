@@ -432,29 +432,4 @@ defmodule QueryTest do
   test "test rare commands in prepared statements", context do
     assert _ = query("SHOW FULL PROCESSLIST", [])
   end
-
-  test "async query", context do
-    string  = "Californication"
-    text    = "Some random text"
-    table   = "testing_async_query"
-
-    sql = ~s{CREATE TABLE #{table} } <>
-          ~s{(id serial, title varchar(20), body text(20))}
-
-    :ok = query(sql, [])
-    insert = ~s{INSERT INTO #{table} (title, body) } <>
-             ~s{VALUES (?, ?)}
-    :ok = query(insert, [string, text])
-
-    task1 = async_query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
-    task2 = async_query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
-
-    # String
-    {:ok, %{rows: rows}} = Task.await(task1)
-    assert rows == [[string]]
-
-    # Text
-    {:ok, %{rows: rows}} = Task.await(task2)
-    assert rows == [[text]]
-  end
 end

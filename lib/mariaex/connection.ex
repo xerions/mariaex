@@ -127,40 +127,8 @@ defmodule Mariaex.Connection do
   Runs an (extended) query and returns the result or raises `Mariaex.Error` if
   there was an error. See `query/3`.
   """
-
   def query!(pid, statement, params \\ [], opts \\ []) do
     query(pid, statement, params, opts) |> raiser
-  end
-
-  @doc """
-  Works like `query/2`, `query/3` and `query/4` but is asynchronous. This returns a
-  `%Task{}` and is useful for starting multiple async queries and then waiting on the
-  result later on.
-
-  When server name passed has no process associated, it will raise an error. When the
-  task returns value, it will be the same as the expected return values for the `query`
-  functions.
-
-  ## Examples
-
-      task = %Task{} = Mariaex.Connection.async_query(pid, "SELECT title FROM posts")
-      {:ok, %Mariaex.Result{}} = Task.await(task)
-  """
-  def async_query(pid, statement, params \\ []) do
-    message = {:query, statement, params, []}
-    process = cond do
-        is_pid(pid) ->
-          pid
-        function_exported?(GenServer, :whereis, 1) ->
-          GenServer.whereis(pid) || raise ArgumentError, "No process is associated with #{inspect pid}"
-        true ->
-          raise ArgumentError, "Requires Elixir 1.1 when passing server name as first argument"
-      end
-    monitor = Process.monitor(process)
-    from = {self(), monitor}
-
-    :ok = Connection.cast(pid, {message, from})
-    %Task{ref: monitor}
   end
 
   ### CONNECTION CALLBACKS ###
