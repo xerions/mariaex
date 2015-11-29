@@ -1,3 +1,16 @@
+# 0.6.0
+
+* Enhancements
+  * add decoding of values on client side
+  * add sync connect
+  * use connection library instead of GenServer
+
+* Bug fixes
+  * fix support command
+
+* Backwards incompatible changes
+  * remove async_query
+
 # 0.5.0
 
 * Enhancements
