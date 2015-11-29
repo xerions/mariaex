@@ -431,6 +431,9 @@ defmodule QueryTest do
 
   test "test rare commands in prepared statements", context do
     assert _ = query("SHOW FULL PROCESSLIST", [])
+
+    :ok = query("CREATE TABLE test_describe (id int)", [])
+    assert query("DESCRIBE test_describe", []) == [["id", "int(11)", "YES", "", nil, ""]]
   end
 
   test "multi row result struct with manual decoding", context do
