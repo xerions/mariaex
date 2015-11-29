@@ -152,16 +152,7 @@ defmodule Mariaex.Protocol do
    when s in [:handshake_send, :query_send, :execute_send] do
     command = get_command(statement)
     rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
-    result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
-    {_, state} = Connection.reply(result, state)
-    %{ state | state: :running, substate: nil, statement_id: nil}
-  end
-
-  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state = %{statement: statement, state: s})
-   when s in [:handshake_send, :query_send, :execute_send] do
-    command = get_command(statement)
-    rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
-    result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}}
+    result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id, decoder: :done}}
     {_, state} = Connection.reply(result, state)
     %{ state | state: :running, substate: nil, statement_id: nil}
   end
@@ -180,8 +171,8 @@ defmodule Mariaex.Protocol do
     %{ state | substate: :column_definitions, types: [] }
   end
 
-  def dispatch(packet(msg: bin_row(row: row)), state = %{state: :rows, types: definitions, rows: acc}) do
-    %{state | rows: [decode_bin_rows(row, definitions) | acc]}
+  def dispatch(packet(msg: bin_row(row: row)), state = %{state: :rows, rows: acc}) do
+    %{state | rows: [row | acc]}
   end
 
   def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows})
@@ -202,9 +193,8 @@ defmodule Mariaex.Protocol do
 
   defp result(state = %{types: types, rows: rows}, cmd) do
     result = %Mariaex.Result{command: cmd,
-                             columns: (for {type, _} <- types, do: type),
-                             rows: Enum.reverse(rows),
-                             num_rows: length(rows)}
+                             rows: rows,
+                             decoder: types}
     {_, state} = Connection.reply({:ok, result}, state)
     %{ state | state: :running, substate: nil, statement_id: nil}
   end

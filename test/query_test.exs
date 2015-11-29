@@ -433,28 +433,15 @@ defmodule QueryTest do
     assert _ = query("SHOW FULL PROCESSLIST", [])
   end
 
-  test "async query", context do
-    string  = "Californication"
-    text    = "Some random text"
-    table   = "testing_async_query"
+  test "multi row result struct with manual decoding", context do
+    assert :ok = query("CREATE TABLE test_manuall_decoding (id int, text text)", [])
+    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [1, "test1"])
+    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [2, "test2"])
+    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM test_manuall_decoding ORDER BY id", [], decode: :manual)
 
-    sql = ~s{CREATE TABLE #{table} } <>
-          ~s{(id serial, title varchar(20), body text(20))}
-
-    :ok = query(sql, [])
-    insert = ~s{INSERT INTO #{table} (title, body) } <>
-             ~s{VALUES (?, ?)}
-    :ok = query(insert, [string, text])
-
-    task1 = async_query("SELECT title from #{table} WHERE id = LAST_INSERT_ID()", [])
-    task2 = async_query("SELECT body from #{table} WHERE id = LAST_INSERT_ID()", [])
-
-    # String
-    {:ok, %{rows: rows}} = Task.await(task1)
-    assert rows == [[string]]
-
-    # Text
-    {:ok, %{rows: rows}} = Task.await(task2)
-    assert rows == [[text]]
+    assert res.rows == [<<0, 0, 2, 0, 0, 0, 5, 116, 101, 115, 116, 50>>,
+                        <<0, 0, 1, 0, 0, 0, 5, 116, 101, 115, 116, 49>>]
+    assert [[1, "test1"], [2, "test2"]] == Mariaex.Connection.decode(res).rows
+    assert [[1], [2]] == Mariaex.Connection.decode(res, fn([id, _]) -> [id] end).rows
   end
 end

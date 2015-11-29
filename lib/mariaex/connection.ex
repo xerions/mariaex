@@ -101,6 +101,8 @@ defmodule Mariaex.Connection do
     * `:timeout` - Call timeout (default: `#{@timeout}`)
     * `:param_types` - A list of type names for the parameters
     * `:result_types` - A list of type names for the result rows
+    * `:decode` - If the result set decoding should be done automatically
+       (`:auto`) or manually (`:manual`) via `decode/2`. Defaults to `:auto`.
 
   ## Examples
 
@@ -120,47 +122,38 @@ defmodule Mariaex.Connection do
   def query(pid, statement, params \\ [], opts \\ []) do
     message = {:query, statement, params, opts}
     timeout = opts[:timeout] || @timeout
-    Connection.call(pid, message, timeout)
+    case GenServer.call(pid, message, timeout) do
+      {:ok, %Mariaex.Result{} = res} ->
+        case Keyword.get(opts, :decode, :auto) do
+          :auto   -> {:ok, decode(res)}
+          :manual -> {:ok, res}
+        end
+      error ->
+        error
+    end
   end
 
   @doc """
   Runs an (extended) query and returns the result or raises `Mariaex.Error` if
   there was an error. See `query/3`.
   """
-
   def query!(pid, statement, params \\ [], opts \\ []) do
     query(pid, statement, params, opts) |> raiser
   end
 
   @doc """
-  Works like `query/2`, `query/3` and `query/4` but is asynchronous. This returns a
-  `%Task{}` and is useful for starting multiple async queries and then waiting on the
-  result later on.
+  Decodes a result set.
 
-  When server name passed has no process associated, it will raise an error. When the
-  task returns value, it will be the same as the expected return values for the `query`
-  functions.
-
-  ## Examples
-
-      task = %Task{} = Mariaex.Connection.async_query(pid, "SELECT title FROM posts")
-      {:ok, %Mariaex.Result{}} = Task.await(task)
+  It is a no-op if the result was already decoded.
   """
-  def async_query(pid, statement, params \\ []) do
-    message = {:query, statement, params, []}
-    process = cond do
-        is_pid(pid) ->
-          pid
-        function_exported?(GenServer, :whereis, 1) ->
-          GenServer.whereis(pid) || raise ArgumentError, "No process is associated with #{inspect pid}"
-        true ->
-          raise ArgumentError, "Requires Elixir 1.1 when passing server name as first argument"
-      end
-    monitor = Process.monitor(process)
-    from = {self(), monitor}
-
-    :ok = Connection.cast(pid, {message, from})
-    %Task{ref: monitor}
+  def decode(_, mapper \\ fn x -> x end)
+  def decode(%Mariaex.Result{decoder: :done} = result, _), do: result
+  def decode(%Mariaex.Result{rows: rows, decoder: types} = result, mapper) do
+    rows = rows |> Enum.reduce([], &([(Mariaex.Messages.decode_bin_rows(&1, types) |> mapper.()) | &2]))
+    %{result | columns: (for {type, _} <- types, do: type),
+               rows: rows,
+               num_rows: length(rows),
+               decoder: :done}
   end
 
   ### CONNECTION CALLBACKS ###
