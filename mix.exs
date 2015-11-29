@@ -29,7 +29,7 @@ defmodule Mariaex.Mixfile do
   end
 
   defp package do
-    [contributors: ["Dmitry Russ(Aleksandrov)"],
+    [maintainers: ["Dmitry Russ(Aleksandrov)"],
      links: %{"Github" => "https://github.com/xerions/mariaex"}]
   end
 end
