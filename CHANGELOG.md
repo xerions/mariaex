@@ -1,3 +1,8 @@
+# 0.6.1
+
+* Enhancements
+  * add support for MySQL 5.7.X
+
 # 0.6.0
 
 * Enhancements

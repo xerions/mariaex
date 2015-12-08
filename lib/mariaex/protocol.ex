@@ -35,7 +35,6 @@ defmodule Mariaex.Protocol do
 
   def init(opts) do
     sock_mod   = Keyword.fetch!(opts, :sock_mod)
-    timeout    = opts[:timeout] || @timeout
     host       = Keyword.fetch!(opts, :hostname)
     host       = if is_binary(host), do: String.to_char_list(host), else: host
     port       = opts[:port] || 3306
@@ -44,6 +43,7 @@ defmodule Mariaex.Protocol do
     keepalive  = {opts[:keepalive_interval] || @keepalive_interval,
                   opts[:keepalive_timeout]  || @keepalive_timeout}
     s = %{sock: nil, tail: "", state: nil, substate: nil, state_data: nil, parameters: %{},
+          catch_eof: false, protocol57: false,
           backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
           parameter_types: [], types: [], queue: :queue.new, opts: opts, statement_id: nil, handshake: nil,
           keepalive: keepalive, keepalive_send: nil, last_answer: nil, cache: Mariaex.Cache.new(cache_size)}
@@ -101,9 +101,17 @@ defmodule Mariaex.Protocol do
     Connection.pong(state) |> put_in([:state], :running)
   end
 
-  def dispatch(packet(seqnum: seqnum, msg: handshake(plugin: plugin) = handshake) = _packet, %{state: :handshake, opts: opts} = s) do
+  def dispatch(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet, %{state: :handshake} = s) do
+    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
+    ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
+    ## In a phase of geting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
+    ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
+    ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
+    ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
+    ## Due to this, we need to difference server version.
+    protocol57 = Version.match?(server_version, "~> 5.7.5")
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
-    authorization(plugin, %{s | handshake: %{salt: {salt1, salt2}, seqnum: seqnum}})
+    authorization(plugin, %{s | protocol57: protocol57, handshake: %{salt: {salt1, salt2}, seqnum: seqnum}})
   end
 
   def dispatch(packet(msg: :mysql_old_password), state = %{opts: opts, handshake: handshake}) do
@@ -125,26 +133,17 @@ defmodule Mariaex.Protocol do
     abort_statement(state, code, message)
   end
 
-  def dispatch(packet(msg: column_definition_41() = msg), state = %{types: acc, substate: :column_definitions}) do
+  def dispatch(packet(msg: column_definition_41() = msg), s = %{types: acc, substate: :column_definitions}) do
     column_definition_41(type: type, name: name) = msg
-    %{ state | types: [{name, type} | acc] }
+    %{ s | types: [{name, type} | acc] } |> count_down()
   end
 
-  def dispatch(packet(msg: eof_resp() = _msg), s = %{types: definitions, state: state, substate: :column_definitions}) do
+  def dispatch(packet(msg: eof_resp() = _msg), s = %{state: state, substate: :column_definitions}) do
     case state do
-      :prepare_send ->
-        case s.state_data do
-          {true, true} ->
-            %{ s | state: :prepare_send_2, parameter_types: Enum.reverse(definitions) }
-          {true, false} ->
-            send_execute_new(%{s | parameter_types: Enum.reverse(definitions)})
-          {false, true} ->
-            send_execute_new(s)
-        end
-      :prepare_send_2 ->
-        send_execute_new(s)
       :execute_send ->
-        %{ s | state: :rows, substate: :bin_rows, types: Enum.reverse(definitions) }
+        %{ s | state: :rows, substate: :bin_rows, catch_eof: not s.protocol57 }
+      _ ->
+        s
     end
   end
 
@@ -158,37 +157,61 @@ defmodule Mariaex.Protocol do
   end
 
   def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
-    statedata = {params > 0, columns > 0}
-    case statedata do
-      {false, false} ->
-        send_execute(%{ state | statement_id: id})
-      _ ->
-        %{ state | substate: :column_definitions, state_data: {params > 0, columns > 0}, statement_id: id }
-    end
+    statedata = {columns, params}
+    switch_state(%{state | substate: :column_definitions, state_data: statedata, statement_id: id })
   end
 
-  def dispatch(packet(msg: column_count(column_count: _count)), state = %{state: s}) when s in [:query_send, :execute_send] do
-    %{ state | substate: :column_definitions, types: [] }
+  def dispatch(packet(msg: column_count(column_count: count)), state = %{state: s}) when s in [:query_send, :execute_send] do
+    %{ state | substate: :column_definitions, types: [], state_data: {0, count} }
   end
 
   def dispatch(packet(msg: bin_row(row: row)), state = %{state: :rows, rows: acc}) do
     %{state | rows: [row | acc]}
   end
 
-  def dispatch(packet(msg: msg), state = %{statement: statement, state: :rows})
+  def dispatch(packet(msg: msg), state = %{statement: statement, catch_eof: catch_eof, state: :rows})
    when elem(msg, 0) in [:ok_resp, :eof_resp] do
-
     cmd = get_command(statement)
     case cmd do
-      :call when elem(msg, 0) == :eof_resp ->
+      :call when (elem(msg, 0) == :eof_resp) ->
         %{state | state: :call_last_ok, substate: nil}
       _ ->
-        result(state, cmd)
+        case elem(msg, 0) do
+          :eof_resp when catch_eof -> %{state | catch_eof: false}
+          _                        -> result(state, cmd)
+        end
     end
   end
 
   def dispatch(packet(msg: ok_resp()), state = %{state: :call_last_ok}) do
     result(state, :call)
+  end
+
+  def dispatch(packet(msg: eof_resp()), state) do
+    state
+  end
+
+  defp count_down(s = %{state_data: {columns, params}}) when params > 1,
+    do: %{s | state_data: {columns, params - 1}}
+  defp count_down(s = %{state_data: {columns, 1}, types: definitions}),
+    do: %{s | parameter_types: Enum.reverse(definitions), state_data: {columns, 0}} |> switch_state
+  defp count_down(s = %{state_data: {columns, 0}}) when columns > 1,
+    do: %{s | state_data: {columns - 1, 0}}
+  defp count_down(s = %{state_data: {1, 0}}),
+    do: %{s | state_data: {0, 0}} |> switch_state
+
+  defp switch_state(s = %{state: state, state_data: state_data, substate: :column_definitions}) do
+    case state do
+      :prepare_send ->
+        case state_data do
+          {0, 0} ->
+            send_execute_new(s)
+          _ ->
+            s
+        end
+      :execute_send ->
+        %{ s | state: :rows, substate: :bin_rows, catch_eof: not s.protocol57 }
+    end
   end
 
   defp result(state = %{types: types, rows: rows}, cmd) do
@@ -250,7 +273,7 @@ defmodule Mariaex.Protocol do
     add = add + c
     hash(s, n1, n2, add)
   end
-  defp hash([], n1, n2, add) do
+  defp hash([], n1, n2, _add) do
     mask = bsl(1, 31) - 1
     {band(n1, mask), band(n2, mask)}
   end
@@ -285,7 +308,7 @@ defmodule Mariaex.Protocol do
 
   defp msg_recv({sock_mod, sock}, decode_state, timeout) do
     case sock_mod.recv(sock, 4, timeout) do
-      {:ok, << len :: size(24)-little-integer, seqnum :: size(8)-integer >> = header} ->
+      {:ok, << len :: size(24)-little-integer, _seqnum :: size(8)-integer >> = header} ->
         case sock_mod.recv(sock, len, timeout) do
           {:ok, packet_body} ->
             {packet, ""} = decode(header <> packet_body, decode_state)
@@ -355,7 +378,7 @@ defmodule Mariaex.Protocol do
   defp abort_statement(s, error = %Mariaex.Error{}) do
     case Connection.reply({:error, error}, s) do
       {true, s}  -> close_statement(s)
-      {false, s} -> {:error, error}
+      {false, _s} -> {:error, error}
     end
   end
   defp abort_statement(s, error_msg) do

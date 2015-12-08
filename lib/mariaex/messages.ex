@@ -123,6 +123,9 @@ defmodule Mariaex.Messages do
     header 1
     warnings 2
     status_flags 2
+    ## Since version MySQL of 5.7.X, MySQL sends bigger eof messages without any documentation, what is
+    ## added.
+    message :string_eof
   end
 
   defcoder :error_resp do

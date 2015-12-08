@@ -149,6 +149,7 @@ defmodule Mariaex.Connection do
   def decode(_, mapper \\ fn x -> x end)
   def decode(%Mariaex.Result{decoder: :done} = result, _), do: result
   def decode(%Mariaex.Result{rows: rows, decoder: types} = result, mapper) do
+    types = Enum.reverse(types)
     rows = rows |> Enum.reduce([], &([(Mariaex.Messages.decode_bin_rows(&1, types) |> mapper.()) | &2]))
     %{result | columns: (for {type, _} <- types, do: type),
                rows: rows,
