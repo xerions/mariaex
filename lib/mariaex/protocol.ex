@@ -150,7 +150,7 @@ defmodule Mariaex.Protocol do
   def dispatch(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state = %{statement: statement, state: s})
    when s in [:handshake_send, :query_send, :execute_send] do
     command = get_command(statement)
-    rows = if (command in [:create, :insert, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
+    rows = if (command in [:create, :insert, :replace, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id, decoder: :done}}
     {_, state} = Connection.reply(result, state)
     %{ state | state: :running, substate: nil, statement_id: nil}
@@ -328,7 +328,7 @@ defmodule Mariaex.Protocol do
 
   def send_query(statement, params, s) do
     command = get_command(statement)
-    case command in [:insert, :select, :update, :delete, :show, :call, :describe] do
+    case command in [:insert, :select, :update, :delete, :replace, :show, :call, :describe] do
       true ->
         case Cache.lookup(s.cache, statement) do
           {id, parameter_types} ->

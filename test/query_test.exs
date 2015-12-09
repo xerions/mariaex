@@ -449,4 +449,15 @@ defmodule QueryTest do
     assert [[1, "test1"], [2, "test2"]] == Mariaex.Connection.decode(res).rows
     assert [[1], [2]] == Mariaex.Connection.decode(res, fn([id, _]) -> [id] end).rows
   end
+
+  test "replace statement", context do
+    date = {2014, 8, 20}
+    timestamp = {date, {18, 47, 42, 0}}
+    sql = "CREATE TABLE test_replace (id INT UNSIGNED NOT NULL AUTO_INCREMENT," <>
+          "data VARCHAR(64) DEFAULT NULL, ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," <>
+          "PRIMARY KEY (id));"
+    assert :ok = query(sql, [])
+    assert :ok = query("REPLACE INTO test_replace VALUES (1, 'Old', '2014-08-20 18:47:00');", [])
+    assert :ok = query("REPLACE INTO test_replace VALUES (1, 'New', ?);", [timestamp])
+  end
 end
