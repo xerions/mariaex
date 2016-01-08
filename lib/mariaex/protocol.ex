@@ -109,7 +109,7 @@ defmodule Mariaex.Protocol do
     ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
     ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
     ## Due to this, we need to difference server version.
-    protocol57 = String.split(server_version, "-", parts: 2) |> hd |> Version.match?("~> 5.7.5")
+    protocol57 = get_3_digits_version(server_version) |> Version.match?("~> 5.7.5")
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
     authorization(plugin, %{s | protocol57: protocol57, handshake: %{salt: {salt1, salt2}, seqnum: seqnum}})
   end
@@ -401,4 +401,13 @@ defmodule Mariaex.Protocol do
     statement |> :binary.split([" ", "\n"]) |> hd |> String.downcase |> String.to_atom
   end
   defp get_command(nil), do: nil
+
+  defp get_3_digits_version(server_version) do
+    server_version
+    |> String.split("-", parts: 2)
+    |> hd
+    |> String.split(".")
+    |> Enum.slice(0,3)
+    |> Enum.join(".")
+  end
 end
