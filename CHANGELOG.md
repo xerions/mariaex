@@ -1,3 +1,10 @@
+# 0.6.2
+
+* Bug fixes
+  * fix version handling for complexer MySQL versions
+  * add connection to list of dependent applications
+  * support parameterized replace commands
+
 # 0.6.1
 
 * Enhancements
