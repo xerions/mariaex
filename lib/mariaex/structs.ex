@@ -16,19 +16,19 @@ defmodule Mariaex.Result do
     rows:     [tuple] | nil,
     last_insert_id: integer,
     num_rows: integer,
-    decoder: nil | [tuple] | :done}
+    connection_id: nil}
 
-  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :decoder]
+  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :connection_id]
 end
 
 defmodule Mariaex.Error do
-  defexception [:message, :mariadb]
+  defexception [:message, :mariadb, :connection_id]
 
   def message(e) do
     if kw = e.mariadb do
-      msg = "(#{kw[:code]}): #{kw[:message]}"
+      "(#{kw[:code]}): #{kw[:message]}"
+    else
+      e.message
     end
-
-    msg || e.message
   end
 end

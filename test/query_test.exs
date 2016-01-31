@@ -3,13 +3,13 @@ defmodule QueryTest do
   import Mariaex.TestHelper
 
   setup do
-    opts = [ database: "mariaex_test", username: "root" ]
+    opts = [database: "mariaex_test", username: "root", backoff_type: :stop]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end
 
   test "simple query using password connection" do
-    opts = [ database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass" ]
+    opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass"]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
 
     context = [pid: pid]
@@ -22,19 +22,23 @@ defmodule QueryTest do
   end
 
   test "connection without database" do
-    opts = [ username: "mariaex_user", password: "mariaex_pass", skip_database: true ]
+    opts = [username: "mariaex_user", password: "mariaex_pass", skip_database: true]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
 
     context = [pid: pid]
 
     assert :ok = query("CREATE DATABASE database_from_connection", [])
-    assert [] = query("DROP DATABASE database_from_connection", [])
+    assert :ok = query("DROP DATABASE database_from_connection", [])
   end
 
   test "queries are dequeued after previous query is processed", context do
-    assert {:timeout, _} =
-           catch_exit(query("SLEEP(0.1", [], timeout: 0))
-    assert [[1]] = query("SELECT 1", [])
+    conn = context[:pid]
+
+    Process.flag(:trap_exit, true)
+    capture_log fn ->
+      assert %Mariaex.Error{} = query("DO SLEEP(0.1)", [], timeout: 0)
+      assert_receive {:EXIT, ^conn, {:shutdown, :disconnect}}
+    end
   end
 
   test "support primitive data types using prepared statements", context do
@@ -394,8 +398,8 @@ defmodule QueryTest do
   end
 
   test "encoding bad parameters", context do
-    assert %Mariaex.Error{message: "query has invalid number of parameters"} = query("SELECT 1", [:badparam])
-    assert %Mariaex.Error{message: "query has invalid parameters"} = query("SELECT ?", [:badparam])
+    assert %ArgumentError{message: "parameters must be of length 1 for query" <> _} = catch_error(query("SELECT 1", [:badparam]))
+    assert %ArgumentError{message: "query has invalid parameter :badparam"} = catch_error(query("SELECT ?", [:badparam]))
   end
 
   test "non ascii character", context do
@@ -432,22 +436,10 @@ defmodule QueryTest do
   end
 
   test "test rare commands in prepared statements", context do
-    assert _ = query("SHOW FULL PROCESSLIST", [])
+    _ = query("SHOW FULL PROCESSLIST", [])
 
     :ok = query("CREATE TABLE test_describe (id int)", [])
     assert query("DESCRIBE test_describe", []) == [["id", "int(11)", "YES", "", nil, ""]]
-  end
-
-  test "multi row result struct with manual decoding", context do
-    assert :ok = query("CREATE TABLE test_manuall_decoding (id int, text text)", [])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [1, "test1"])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [2, "test2"])
-    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM test_manuall_decoding ORDER BY id", [], decode: :manual)
-
-    assert res.rows == [<<0, 0, 2, 0, 0, 0, 5, 116, 101, 115, 116, 50>>,
-                        <<0, 0, 1, 0, 0, 0, 5, 116, 101, 115, 116, 49>>]
-    assert [[1, "test1"], [2, "test2"]] == Mariaex.Connection.decode(res).rows
-    assert [[1], [2]] == Mariaex.Connection.decode(res, fn([id, _]) -> [id] end).rows
   end
 
   test "replace statement", context do

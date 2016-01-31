@@ -1,8 +1,8 @@
-defmodule Mariaex.Cache do
+defmodule Mariaex.LruCache do
   import :os, only: [timestamp: 0]
 
   def new(size) do
-    {size, :ets.new(:cache, [])}
+    {size, :ets.new(:cache, [:public])}
   end
 
   def lookup({_, cache}, statement) do
