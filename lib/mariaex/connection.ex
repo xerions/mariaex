@@ -47,7 +47,9 @@ defmodule Mariaex.Connection do
     * `:keepalive` - Enable keepalive (default: false), please note, it is not considered stable API;
     * `:keepalive_interval` - Keepalive interval (default: 60000);
     * `:keepalive_timeout` - Keepalive timeout (default: 5000);
-    * `:insecure_auth` - Secure authorization (default: false)
+    * `:insecure_auth` - Secure authorization (default: false);
+    * `:prepend_table` - Prepend the table name and a dot to each column in the
+       `columns` field in the result. (default: `false`)
 
 
   ## Function signatures
