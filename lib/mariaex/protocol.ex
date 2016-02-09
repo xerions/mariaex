@@ -42,7 +42,9 @@ defmodule Mariaex.Protocol do
   DBConnection callback
   """
   def connect(opts) do
-    sock_mod   = Keyword.fetch!(opts, :sock_mod)
+    sock_type  = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
+    sock_mod   = Module.concat(Mariaex.Connection, sock_type)
+    opts       = add_default_opts(opts)
     host       = Keyword.fetch!(opts, :hostname)
     host       = if is_binary(host), do: String.to_char_list(host), else: host
     port       = opts[:port] || 3306
@@ -61,6 +63,13 @@ defmodule Mariaex.Protocol do
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
     end
+  end
+
+  defp add_default_opts(opts) do
+    opts
+    |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
+    |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
+    |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
   end
 
   def_handle :handshake_recv, :handle_handshake

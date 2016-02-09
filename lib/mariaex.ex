@@ -3,7 +3,6 @@ defmodule Mariaex do
   Main API for Mariaex.
   """
 
-  alias Mariaex.Connection
   alias Mariaex.Protocol
   alias Mariaex.Query
 
@@ -88,13 +87,6 @@ defmodule Mariaex do
   """
   @spec start_link(Keyword.t) :: {:ok, pid} | {:error, Mariaex.Error.t | term}
   def start_link(opts) do
-    sock_type = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
-    sock_mod = Module.concat(Connection, sock_type)
-    opts = opts
-      |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
-      |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
-      |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
-      |> Keyword.put_new(:sock_mod, sock_mod)
     DBConnection.start_link(Protocol, opts)
   end
 
@@ -129,15 +121,15 @@ defmodule Mariaex do
 
   ## Examples
 
-      Mariaex.Connection.query(pid, "CREATE TABLE posts (id serial, title text)")
+      Mariaex.query(pid, "CREATE TABLE posts (id serial, title text)")
 
-      Mariaex.Connection.query(pid, "INSERT INTO posts (title) VALUES ('my title')")
+      Mariaex.query(pid, "INSERT INTO posts (title) VALUES ('my title')")
 
-      Mariaex.Connection.query(pid, "SELECT title FROM posts", [])
+      Mariaex.query(pid, "SELECT title FROM posts", [])
 
-      Mariaex.Connection.query(pid, "SELECT id FROM posts WHERE title like ?", ["%my%"])
+      Mariaex.query(pid, "SELECT id FROM posts WHERE title like ?", ["%my%"])
 
-      Mariaex.Connection.query(pid, "SELECT ? || ?", ["4", "2"],
+      Mariaex.query(pid, "SELECT ? || ?", ["4", "2"],
                                 param_types: ["text", "text"], result_types: ["text"])
 
   """
