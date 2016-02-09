@@ -1,14 +1,14 @@
 defmodule Mariaex.Protocol do
   @moduledoc false
 
-  alias Mariaex.Connection
+  alias Mariaex.Cache
   alias Mariaex.LruCache
   alias Mariaex.Query
   import Mariaex.Messages
   import Mariaex.ProtocolHelper
-
   use Bitwise
 
+  @reserved_prefix "MARIAEX_"
   @timeout 5000
   @keepalive_interval 60000
   @keepalive_timeout @timeout
@@ -36,7 +36,7 @@ defmodule Mariaex.Protocol do
                 @client_deprecate_eof
 
   defstruct [sock: nil, state: nil, state_data: nil, protocol57: false, rows: [], connection_id: nil,
-             opts: [], catch_eof: false, buffer: "", timeout: 0, cache: nil, seqnum: 0]
+             opts: [], catch_eof: false, buffer: "", timeout: 0, lru_cache: nil, cache: nil, seqnum: 0]
 
   @doc """
   DBConnection callback
@@ -54,7 +54,8 @@ defmodule Mariaex.Protocol do
                         connection_id: self,
                         opts: opts,
                         sock: {sock_mod, sock},
-                        cache: Mariaex.LruCache.new(cache_size),
+                        cache: Mariaex.Cache.new(),
+                        lru_cache: Mariaex.LruCache.new(cache_size),
                         timeout: timeout}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
@@ -165,6 +166,9 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
+  def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
+    reserved_error(query, s)
+  end
   def handle_prepare(%Query{type: nil, statement: statement} = query, opts, s) do
     command = get_command(statement)
     handle_prepare(%{query | type: request_type(command)}, opts, s)
@@ -172,14 +176,31 @@ defmodule Mariaex.Protocol do
   def handle_prepare(%Query{type: :text} = query, _, s) do
     {:ok, query, s}
   end
-  def handle_prepare(%Query{type: :binary, statement: statement} = query, _, %{cache: cache} = s) do
-    case LruCache.lookup(cache, statement) do
+  def handle_prepare(%Query{type: :binary, statement: statement} = query, _, s) do
+    case cache_lookup(query, s) do
       {id, types, parameter_types} ->
-        LruCache.update(cache, statement, {id, types, parameter_types})
         {:ok, %{query | statement_id: id, types: types, parameter_types: parameter_types}, s}
       nil ->
         msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
         prepare_recv(%{s | state: :prepare_send}, query)
+    end
+  end
+
+  defp cache_lookup(%Query{name: "", statement: statement}, %{lru_cache: lru_cache}) do
+    case LruCache.lookup(lru_cache, statement) do
+      {_id, _types, _parameter_types} = result ->
+        LruCache.update(lru_cache, statement, result)
+        result
+      nil ->
+        nil
+    end
+  end
+  defp cache_lookup(%Query{name: name}, %{cache: cache}) do
+    case Cache.lookup(cache, name) do
+      {_id, _types, _parameter_types} = result ->
+        result
+      nil ->
+        nil
     end
   end
 
@@ -213,13 +234,20 @@ defmodule Mariaex.Protocol do
   end
   defp handle_prepare_send(packet, query, state), do: handle_error(packet, query, state)
 
-  defp prepare_may_recv_more(%{state_data: {0, 0}, catch_eof: false, sock: sock, cache: cache} = state, query) do
-    %{statement_id: id, statement: statement, types: types, parameter_types: parameter_types} = query
-    LruCache.insert(cache, statement, {id, types, parameter_types}, &close_statement(&1, &2, sock))
+  defp prepare_may_recv_more(%{state_data: {0, 0}, catch_eof: false} = state, query) do
+    cache_insert(query, state)
     {:ok, query, state}
   end
   defp prepare_may_recv_more(state, query) do
     prepare_recv(%{state | state: :column_definitions}, query)
+  end
+
+  defp cache_insert(%{name: ""} = query, %{sock: sock, lru_cache: cache}) do
+    %{statement_id: id, statement: statement, types: types, parameter_types: parameter_types} = query
+    LruCache.insert(cache, statement, {id, types, parameter_types}, &close_statement(&1, &2, sock))
+  end
+  defp cache_insert(%{name: name, statement_id: id, types: types, parameter_types: parameter_types}, %{cache: cache}) do
+    Cache.insert(cache, name, {id, types, parameter_types})
   end
 
   defp count_down(query, s = %{state_data: {columns, params}}) when params > 1,
@@ -232,14 +260,33 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_execute_close(%Query{type: :text, statement: statement} = query, [], _opts, s) do
-    send_text_query(s, statement) |> text_query_recv(query)
+  def handle_execute_close(query, params, opts, s), do: handle_execute(query, params, opts, s)
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_execute(%Query{name: @reserved_prefix <> _, reserved?: false} = query, _, s) do
+    reserved_error(query, s)
   end
-  def handle_execute_close(%Query{type: :binary, statement_id: id} = query, params, _opts, s) do
-    msg_send(stmt_execute(command: com_stmt_execute, parameters: params, statement_id: id, flags: 0, iteration_count: 1), s, 0)
-    binary_query_recv(%{s | state: :column_count}, query)
+  def handle_execute(%Query{type: :text, statement: statement, statement_id: nil} = query, [], _opts, state) do
+    send_text_query(state, statement) |> text_query_recv(query)
   end
-  def handle_execute_close(query, params, _opts, state) do
+  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
+    send_text_query(state, statement) |> text_query_recv(query)
+  end
+  def handle_execute(%Query{type: :binary, statement_id: nil} = query, params, opts, state) do
+    case handle_prepare(query, opts, state) do
+      {:ok, query, state} ->
+        handle_execute(query, params, opts, state)
+      error ->
+        error
+    end
+  end
+  def handle_execute(%Query{type: :binary, statement_id: id} = query, params, _opts, state) do
+    msg_send(stmt_execute(command: com_stmt_execute, parameters: params, statement_id: id, flags: 0, iteration_count: 1), state, 0)
+    binary_query_recv(%{state | state: :column_count}, query)
+  end
+  def handle_execute(query, params, _opts, state) do
     query_error(state, "unsupported parameterized query #{inspect(query.statement)} parameters #{inspect(params)}")
   end
 
@@ -284,6 +331,66 @@ defmodule Mariaex.Protocol do
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
     {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, s}
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_begin(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "BEGIN"
+        handle_transaction(name, :begin, opts, s)
+      :savepoint   ->
+        name = @reserved_prefix <> "SAVEPOINT mariaex_savepoint"
+        handle_savepoint([name], [:savepoint], opts, s)
+    end
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_commit(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "COMMIT"
+        handle_transaction(name, :commit, opts, s)
+      :savepoint ->
+        name = @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"
+        handle_savepoint([name], [:release], opts, s)
+    end
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_rollback(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "ROLLBACK"
+        handle_transaction(name, :rollback, opts, s)
+      :savepoint ->
+        names = [@reserved_prefix <> "ROLLBACK TO SAVEPOINT mariaex_savepoint",
+                 @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"]
+        handle_savepoint(names, [:rollback, :release], opts, s)
+    end
+  end
+
+  defp handle_transaction(name, cmd, opts, state) do
+    query = %Query{type: :text, name: name, statement: to_string(cmd), reserved?: true}
+    handle_execute(query, [], opts, state)
+  end
+
+  defp handle_savepoint(names, cmds, opts, state) do
+    Enum.zip(names, cmds) |> Enum.reduce({:ok, nil, state}, fn({name, cmd}, {:ok, _, state}) ->
+      query = %Query{type: :text, name: name, statement: to_string(cmd)}
+      case handle_execute(query, [], opts, state) do
+        {:ok, res, state} ->
+          {:ok, res, state}
+        other ->
+          other
+      end
+    end)
   end
 
   @doc """
@@ -429,12 +536,17 @@ defmodule Mariaex.Protocol do
     msg_send(stmt_close(command: com_stmt_close, statement_id: id), sock, 0)
   end
 
-  def close_statement(s = %{sock: sock, cache: cache}, %{statement: statement}) do
+  def close_statement(s = %{sock: sock, lru_cache: cache}, %{statement: statement}) do
     LruCache.delete(cache, statement, &close_statement(&1, &2, sock))
-    %{ s | state: :running}
+    %{s | state: :running}
   end
   def close_statement(s = %{}, _) do
-    %{ s | state: :running}
+    %{s | state: :running}
+  end
+
+  defp reserved_error(query, s) do
+    error = ArgumentError.exception("query #{inspect query} uses reserved name")
+    {:error, error, s}
   end
 
   @doc """

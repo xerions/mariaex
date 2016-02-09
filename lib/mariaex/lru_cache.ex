@@ -1,4 +1,7 @@
 defmodule Mariaex.LruCache do
+  @moduledoc """
+  Implements LRU cache for queries.
+  """
   import :os, only: [timestamp: 0]
 
   def new(size) do

@@ -243,6 +243,68 @@ defmodule Mariaex do
     DBConnection.execute!(conn, query, params, defaults(opts))
   end
 
+  @doc """
+  Acquire a lock on a connection and run a series of requests inside a
+  transaction. The result of the transaction fun is return inside an `:ok`
+  tuple: `{:ok, result}`.
+
+  To use the locked connection call the request with the connection
+  reference passed as the single argument to the `fun`. If the
+  connection disconnects all future calls using that connection
+  reference will fail.
+
+  `rollback/2` rolls back the transaction and causes the function to
+  return `{:error, reason}`.
+
+  `transaction/3` can be nested multiple times if the connection
+  reference is used to start a nested transaction. The top level
+  transaction function is the actual transaction.
+
+  ## Options
+
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Transaction timeout (default: `#{@timeout}`);
+    * `:pool` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection;
+    * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
+    transaction, otherwise set to `:transaction` (default: `:transaction`);
+
+
+  The `:timeout` is for the duration of the transaction and all nested
+  transactions and requests. This timeout overrides timeouts set by internal
+  transactions and requests. The `:pool` and `:mode` will be used for all
+  requests inside the transaction function.
+
+  ## Example
+
+      {:ok, res} = Mariaex.transaction(pid, fn(conn) ->
+        Mariaex.query!(conn, "SELECT title FROM posts", [])
+      end)
+  """
+  @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
+    {:ok, result} | {:error, any} when result: var
+  def transaction(conn, fun, opts \\ []) do
+    DBConnection.transaction(conn, fun, defaults(opts))
+  end
+
+  @doc """
+  Rollback a transaction, does not return.
+
+  Aborts the current transaction fun. If inside multiple `transaction/3`
+  functions, bubbles up to the top level.
+
+  ## Example
+
+      {:error, :oops} = Mariaex.transaction(pid, fn(conn) ->
+        Mariaex.rollback(conn, :oops)
+        IO.puts "never reaches here!"
+      end)
+  """
+  @spec rollback(DBConnection.t, any) :: no_return()
+  defdelegate rollback(conn, any), to: DBConnection
+
   ## Helpers
 
   defp defaults(opts) do

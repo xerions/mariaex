@@ -25,6 +25,7 @@ defmodule Mariaex.Query do
 
 
   defstruct name: "",
+            reserved?: false,
             type: nil,
             statement: "",
             statement_id: nil,

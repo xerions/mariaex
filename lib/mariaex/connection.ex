@@ -7,5 +7,8 @@ defmodule Mariaex.Connection do
                query(conn, statement),
                query(conn, statement, params),
                query(conn, statement, params, opts),
+               query!(conn, statement),
+               query!(conn, statement, params),
+               query!(conn, statement, params, opts),
               ], to: Mariaex
 end
