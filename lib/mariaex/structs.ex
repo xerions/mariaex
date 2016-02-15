@@ -28,7 +28,7 @@ defmodule Mariaex.Error do
     if kw = e.mariadb do
       "(#{kw[:code]}): #{kw[:message]}"
     else
-      e.message
+      e.message || ""
     end
   end
 end

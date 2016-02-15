@@ -76,7 +76,22 @@ defmodule Mariaex.Protocol do
     |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
   end
 
-  def_handle :handshake_recv, :handle_handshake
+  defp handshake_recv(state, request) do
+    case msg_recv(state) do
+      {:ok, packet} ->
+        handle_handshake(packet, request, state)
+      {:error, reason} ->
+        {sock_mod, _} = state.sock
+        Mariaex.Protocol.do_disconnect(state, {sock_mod.tag, "recv", reason, ""}) |> connected()
+    end
+  end
+
+  defp connected({:disconnect, error, state}) do
+    disconnect(error, state)
+    {:error, error}
+  end
+  defp connected(other), do: other
+
   defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
     ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
     ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
@@ -106,10 +121,7 @@ defmodule Mariaex.Protocol do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, state} ->
-        case activate(%{state | state: :running}, state.buffer) do
-          {:ok, _} = ok -> ok
-          {:disconnect, error, _} -> {:error, error}
-        end
+        activate(%{state | state: :running}, state.buffer) |> connected()
     end
   end
   defp handle_handshake(packet, query, state) do
