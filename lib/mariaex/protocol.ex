@@ -45,35 +45,39 @@ defmodule Mariaex.Protocol do
   DBConnection callback
   """
   def connect(opts) do
-    sock_type  = (opts[:sock_type] || :tcp) |> Atom.to_string |> String.capitalize()
-    sock_mod   = Module.concat(Mariaex.Connection, sock_type)
-    opts       = add_default_opts(opts)
-    host       = Keyword.fetch!(opts, :hostname)
-    host       = if is_binary(host), do: String.to_char_list(host), else: host
-    port       = opts[:port] || 3306
-    timeout    = opts[:timeout] || @timeout
-    cache_size = opts[:cache_size] || @cache_size
-    case sock_mod.connect(host, port, opts[:socket_options] || [], timeout) do
+    opts         = default_opts(opts)
+    sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
+    sock_mod     = Module.concat(Mariaex.Connection, sock_type)
+    host         = opts[:hostname]
+    host         = if is_binary(host), do: String.to_char_list(host), else: host 
+    connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
+
+    case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
         s = %__MODULE__{state: :handshake,
                         connection_id: self,
-                        opts: opts,
                         connection_ref: make_ref,
                         sock: {sock_mod, sock},
-                        cache: Mariaex.Cache.new(),
-                        lru_cache: Mariaex.LruCache.new(cache_size),
-                        timeout: timeout}
+                        cache: Cache.new(),
+                        lru_cache: LruCache.new(opts[:cache_size]),
+                        timeout: opts[:timeout],
+                        opts: opts}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
     end
   end
 
-  defp add_default_opts(opts) do
+  defp default_opts(opts) do
     opts
     |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
     |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
+    |> Keyword.put_new(:port, 3306)
+    |> Keyword.put_new(:timeout, @timeout)
+    |> Keyword.put_new(:cache_size, @cache_size)
+    |> Keyword.put_new(:sock_type, :tcp)
+    |> Keyword.put_new(:socket_options, [])
   end
 
   def_handle :handshake_recv, :handle_handshake
