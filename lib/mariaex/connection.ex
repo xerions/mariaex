@@ -3,12 +3,11 @@ defmodule Mariaex.Connection do
   Main API for Mariaex. This module handles the connection to .
   """
 
-  defdelegate [start_link(opts),
-               query(conn, statement),
-               query(conn, statement, params),
-               query(conn, statement, params, opts),
-               query!(conn, statement),
-               query!(conn, statement, params),
-               query!(conn, statement, params, opts),
-              ], to: Mariaex
+  defdelegate start_link(opts), to: Mariaex
+  defdelegate query(conn, statement), to: Mariaex
+  defdelegate query(conn, statement, params), to: Mariaex
+  defdelegate query(conn, statement, params, opts), to: Mariaex
+  defdelegate query!(conn, statement), to: Mariaex
+  defdelegate query!(conn, statement, params), to: Mariaex
+  defdelegate query!(conn, statement, params, opts), to: Mariaex
 end

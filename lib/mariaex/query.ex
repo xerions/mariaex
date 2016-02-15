@@ -30,7 +30,8 @@ defmodule Mariaex.Query do
             statement: "",
             statement_id: nil,
             parameter_types: [],
-            types: []
+            types: [],
+            connection_ref: nil
 end
 
 defimpl DBConnection.Query, for: Mariaex.Query do
@@ -133,10 +134,12 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp reverse_bits(<<h::1, t::bits>>, acc),
     do: reverse_bits(t, <<h::1, acc::bits>>)
 
+  @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
+                          :alter, :rename, :drop, :begin, :commit, :rollback]
   def decode(_, %{rows: nil} = res, _), do: res
   def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
-    if command in [:create, :insert, :replace, :update, :delete, :drop, :begin, :commit, :rollback] do
+    if command in @commands_without_rows do
       %Mariaex.Result{res | command: command, rows: nil}
     else
       mapper = opts[:decode_mapper] || fn x -> x end
