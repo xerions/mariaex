@@ -297,6 +297,14 @@ defmodule Mariaex do
   @spec rollback(DBConnection.t, any) :: no_return()
   defdelegate rollback(conn, any), to: DBConnection
 
+  @doc """
+  Returns a supervisor child specification for a DBConnection pool.
+  """
+  @spec child_spec(Keyword.t) :: Supervisor.Spec.spec
+  def child_spec(opts) do
+    DBConnection.child_spec(Mariaex.Protocol, opts)
+  end
+
   ## Helpers
 
   defp defaults(opts) do
