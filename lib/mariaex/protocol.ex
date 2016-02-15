@@ -6,6 +6,7 @@ defmodule Mariaex.Protocol do
   alias Mariaex.Query
   import Mariaex.Messages
   import Mariaex.ProtocolHelper
+
   use DBConnection
   use Bitwise
 
