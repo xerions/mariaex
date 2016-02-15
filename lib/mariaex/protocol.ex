@@ -106,7 +106,10 @@ defmodule Mariaex.Protocol do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, state} ->
-        activate(%{state | state: :running}, state.buffer)
+        case activate(%{state | state: :running}, state.buffer) do
+          {:ok, _} = ok -> ok
+          {:disconnect, error, _} -> {:error, error}
+        end
     end
   end
   defp handle_handshake(packet, query, state) do
