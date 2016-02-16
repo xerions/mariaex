@@ -134,9 +134,9 @@ defmodule Mariaex.Protocol do
   end
 
   def dispatch(packet(msg: column_definition_41() = msg), s = %{types: acc, substate: :column_definitions}) do
-    column_definition_41(type: type, name: name, org_table: org_table) = msg
+    column_definition_41(type: type, name: name, table: table) = msg
     name = if s[:opts][:prepend_table] do
-      org_table <> "." <> name
+      table <> "." <> name
     else
       name
     end
