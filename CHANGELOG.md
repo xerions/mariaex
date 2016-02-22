@@ -1,3 +1,8 @@
+# 0.6.3
+
+* Bug fixes
+  * remove compilation output, which accidental was there
+
 # 0.6.2
 
 * Bug fixes
