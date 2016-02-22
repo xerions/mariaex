@@ -1,3 +1,8 @@
+# 0.6.4
+
+* Enhancements
+  * do not hold references to last executed query in a connection process
+
 # 0.6.3
 
 * Bug fixes
