@@ -153,7 +153,7 @@ defmodule Mariaex.Protocol do
     rows = if (command in [:create, :insert, :replace, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
     result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id, decoder: :done}}
     {_, state} = Connection.reply(result, state)
-    %{ state | state: :running, substate: nil, statement_id: nil}
+    cleanup_state(state)
   end
 
   def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
@@ -219,7 +219,17 @@ defmodule Mariaex.Protocol do
                              rows: rows,
                              decoder: types}
     {_, state} = Connection.reply({:ok, result}, state)
-    %{ state | state: :running, substate: nil, statement_id: nil}
+    cleanup_state(state)
+  end
+
+  defp cleanup_state(state) do
+    %{state | state: :running,
+              statement: nil,
+              substate: nil,
+              statement_id: nil,
+              rows: [],
+              parameter_types: [],
+              types: []}
   end
 
   defp authorization(plugin, %{handshake: %{seqnum: seqnum, salt: {salt1, salt2}}, opts: opts} = s) do
@@ -343,7 +353,7 @@ defmodule Mariaex.Protocol do
         send_text_query(s, statement)
       false ->
         {_, s} = Connection.reply({:error, %Mariaex.Error{message: "unsupported query"}}, s)
-        %{ s | state: :running, substate: nil}
+        cleanup_state(s)
     end
   end
 
@@ -390,11 +400,11 @@ defmodule Mariaex.Protocol do
   end
 
   def close_statement(s = %{statement_id: nil}) do
-    %{ s | state: :running, substate: nil}
+    cleanup_state(s)
   end
   def close_statement(s = %{statement: statement, sock: sock, cache: cache}) do
     Cache.delete(cache, statement, &close_statement(&1, &2, sock))
-    %{ s | state: :running, substate: nil, statement_id: nil}
+    cleanup_state(s)
   end
 
   defp get_command(statement) when is_binary(statement) do
