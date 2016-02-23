@@ -329,7 +329,7 @@ defmodule Mariaex.Protocol do
 
   def_handle :binary_query_recv, :handle_binary_query
   defp handle_binary_query(packet(msg: column_count(column_count: count)), query, state) do
-    binary_query_recv(%{state | state: :column_definitions, state_data: {count, 0}, rows: []}, %{query | types: []})
+    binary_query_recv(%{state | state: :column_definitions, state_data: {count, 0}}, %{query | types: []})
   end
   defp handle_binary_query(packet(msg: column_definition_41() = msg), %{types: types} = query, s) do
     column_definition_41(type: type, name: name) = msg
@@ -346,7 +346,7 @@ defmodule Mariaex.Protocol do
       catch_eof ->
         binary_query_recv(%{s | catch_eof: false}, query)
       true ->
-        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, s}
+        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, %{s | rows: []}}
     end
   end
   defp handle_binary_query(packet(msg: bin_row(row: row)), query, s = %{rows: acc}) do
@@ -359,7 +359,7 @@ defmodule Mariaex.Protocol do
   defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
-    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, s}
+    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, %{s | rows: []}}
   end
 
   @doc """
