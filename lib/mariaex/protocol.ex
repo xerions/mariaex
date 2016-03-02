@@ -368,7 +368,7 @@ defmodule Mariaex.Protocol do
   def handle_begin(opts, s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction ->
-        name = @reserved_prefix <> "BEGIN"
+        name = @reserved_prefix <> "START TRANSACTION"
         handle_transaction(name, :begin, opts, s)
       :savepoint   ->
         name = @reserved_prefix <> "SAVEPOINT mariaex_savepoint"
@@ -399,9 +399,8 @@ defmodule Mariaex.Protocol do
         name = @reserved_prefix <> "ROLLBACK"
         handle_transaction(name, :rollback, opts, s)
       :savepoint ->
-        names = [@reserved_prefix <> "ROLLBACK TO SAVEPOINT mariaex_savepoint",
-                 @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"]
-        handle_savepoint(names, [:rollback, :release], opts, s)
+        name = @reserved_prefix <> "ROLLBACK TO SAVEPOINT mariaex_savepoint"
+        handle_savepoint([name], [:rollback], opts, s)
     end
   end
 
