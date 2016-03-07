@@ -1,3 +1,8 @@
+# 0.4.4
+
+* Bug fixes
+  * fix bug with not usefull copy of binary
+
 # 0.4.3
 
 * Enhancements
