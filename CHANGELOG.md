@@ -1,3 +1,8 @@
+# 0.6.5
+
+* Bug fixes
+  * fix bug with not usefull copy of binary
+
 # 0.6.4
 
 * Enhancements
