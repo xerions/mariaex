@@ -15,12 +15,12 @@ defmodule Mariaex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :decimal, :connection]]
+    [applications: [:logger, :decimal, :db_connection]]
   end
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:connection, "~> 1.0.0"},
+     {:db_connection, "~> 0.2"},
      {:coverex, "~> 1.4.3", only: :test}]
   end
 
@@ -30,6 +30,7 @@ defmodule Mariaex.Mixfile do
 
   defp package do
     [maintainers: ["Dmitry Russ(Aleksandrov)"],
+     licenses: ["Apache 2.0"],
      links: %{"Github" => "https://github.com/xerions/mariaex"}]
   end
 end

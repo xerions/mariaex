@@ -55,9 +55,20 @@ defmodule Mariaex.TestHelper do
     end
   end
 
-  defmacro async_query(stat, params) do
+  defmacro with_prepare!(name, stat, params, opts \\ []) do
     quote do
-      Mariaex.Connection.async_query(var!(context)[:pid], unquote(stat), unquote(params))
+      conn = var!(context)[:pid]
+      query = Mariaex.prepare!(conn, unquote(name), unquote(stat), unquote(opts))
+      case Mariaex.execute!(conn, query, unquote(params)) do
+        %Mariaex.Result{rows: nil} -> :ok
+        %Mariaex.Result{rows: rows} -> rows
+      end
     end
+  end
+
+  def capture_log(fun) do
+    Logger.remove_backend(:console)
+    fun.()
+    Logger.add_backend(:console, flush: true)
   end
 end

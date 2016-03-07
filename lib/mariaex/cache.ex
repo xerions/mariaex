@@ -1,43 +1,42 @@
 defmodule Mariaex.Cache do
-  import :os, only: [timestamp: 0]
+  @moduledoc """
+  Simple cache for named queries
+  """
 
-  def new(size) do
-    {size, :ets.new(:cache, [])}
+  @doc """
+  Create cache
+  """
+  def new() do
+    :ets.new(:cache, [:public])
   end
 
-  def lookup({_, cache}, statement) do
-    case :ets.lookup(cache, statement) do
-      [{_, _, info}] -> info
+  @doc """
+  Lookup the named query in cache
+  """
+  def lookup(cache, name) do
+    case :ets.lookup(cache, name) do
+      [{_, info}] -> info
       _ -> nil
     end
   end
 
-  def delete({_, cache}, statement, cleanup) do
-    case :ets.lookup(cache, statement) do
+  @doc """
+  Delete query, which get the cleanup fun to cleanup the actual prepared query
+  """
+  def delete(cache, name, cleanup) do
+    case :ets.lookup(cache, name) do
       [{_, _, info}] ->
-        :ets.delete(cache, statement)
-        cleanup.(statement, info)
+        :ets.delete(cache, name)
+        cleanup.(name, info)
       _ ->
         nil
     end
   end
 
-  def insert({size, cache}, statement, data, cleanup) do
-    if :ets.info(cache, :size) > size, do: remove_oldest(cache, cleanup)
-    :ets.insert(cache, {statement, timestamp, data})
-  end
-
-  def update({_, cache}, statement, data) do
-    :ets.insert(cache, {statement, timestamp, data})
-  end
-
-  defp remove_oldest(cache, cleanup) do
-    {statement, _, data} = :ets.foldl(fn({statement, timestamp, data}, nil) ->
-                                          {statement, timestamp, data}
-                                        ({_, timestamp, _} = actual, {_, acc_timestamp, _} = acc) ->
-                                          if timestamp < acc_timestamp do actual else acc end
-                                      end, nil, cache)
-    cleanup.(statement, data)
-    :ets.delete(cache, statement)
+  @doc """
+  Inserts the named queries with associated data.
+  """
+  def insert(cache, name, data) do
+    :ets.insert(cache, {name, data})
   end
 end
