@@ -1,3 +1,12 @@
+# 0.7.0
+
+* Enhancements
+  * reimplement protocol based on db_connection library
+  * add possibility to decode bits to support old type booleans
+
+* Bug fixes
+  * fix memory overconsuming
+
 # 0.6.4
 
 * Enhancements
