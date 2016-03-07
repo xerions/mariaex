@@ -191,6 +191,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
   defp handle_decode_bin_rows({:float, :field_type_float}, packet),         do: parse_float_packet(packet, 32)
   defp handle_decode_bin_rows({:float, :field_type_double}, packet),        do: parse_float_packet(packet, 64)
+  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet),             do: parse_bit_packet(packet)
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet
@@ -239,6 +240,12 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       << 11 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
         {{{year, month, day}, {hour, min, sec, msec}}, rest}
     end
+  end
+
+  defp parse_bit_packet(packet) do
+    {bitstring, rest} = length_encoded_string(packet)
+    ## TODO: implement right decoding of bit string
+    {bitstring, rest}
   end
 
   defp null_map_from_mysql(nullbin) do
