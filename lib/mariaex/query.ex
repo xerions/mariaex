@@ -11,18 +11,6 @@ defmodule Mariaex.Query do
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
   """
-  #@type t :: %__MODULE__{
-  #  name:           iodata,
-  #  name:           nil | :text | :binary,
-  #  statement:      iodata,
-  #  param_formats:  [:binary | :text] | nil,
-  #  encoders:       [Mariaex.Types.oid] | [(term -> iodata)] | nil,
-  #  columns:        [String.t] | nil,
-  #  result_formats: [:binary | :text] | nil,
-  #  decoders:       [Mariaex.Types.oid] | [(binary -> term)] | nil,
-  #  types:          Mariaex.TypeServer.table | nil}
-  # {:query, statement, params, opts}
-
 
   defstruct name: "",
             reserved?: false,
@@ -244,7 +232,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   defp parse_bit_packet(packet) do
     {bitstring, rest} = length_encoded_string(packet)
-    ## TODO: implement right decoding of bit string
+    ## TODO: implement right decoding of bit string, if somebody will need it.
     {bitstring, rest}
   end
 

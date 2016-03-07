@@ -198,12 +198,10 @@ defmodule Mariaex.Messages do
 
   # Decoding
 
-  def decode(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, state)
-    do
-      msg = decode_msg(body, state)
-      #IO.inspect({msg, state})
-      {packet(size: len, seqnum: seqnum, msg: msg, body: body), rest}
-    end
+  def decode(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, state) do
+    msg = decode_msg(body, state)
+    {packet(size: len, seqnum: seqnum, msg: msg, body: body), rest}
+  end
   def decode(rest, _state),
     do: {nil, rest}
 
