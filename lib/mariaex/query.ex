@@ -26,6 +26,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @moduledoc """
   Implementation of `DBConnection.Query` protocol.
   """
+  use Bitwise
   import Mariaex.Coder.Utils
   alias Mariaex.Messages
 
@@ -75,9 +76,24 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   defp encode_params({_, param}, {nullbits, typesbin, valuesbin}) do
     {nullbit, type, value} = encode_param(param)
-    {<< nullbits :: bitstring, nullbit :: 1>>,
-     << typesbin :: binary, Messages.__type__(:id, type) :: 16-little >>,
-     << valuesbin :: binary, value :: binary >>}
+
+    types_part = case type do
+      :field_type_longlong ->
+        # Set the unsigned byte if value > 2^63 (bigint's max signed value).
+        if param > 9_223_372_036_854_775_807 do
+          << typesbin :: binary, 0x8008 :: 16-little >>
+        else
+          << typesbin :: binary, 0x08 :: 16-little >>
+        end
+      _ ->
+        << typesbin :: binary, Messages.__type__(:id, type) :: 16-little >>
+    end
+
+    {
+      << nullbits :: bitstring, nullbit :: 1>>,
+      types_part,
+      << valuesbin :: binary, value :: binary >>
+    }
   end
 
   defp encode_param(nil),
@@ -124,6 +140,9 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback]
+
+  @unsigned_flag 0x20
+
   def decode(_, %{rows: nil} = res, _), do: res
   def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
@@ -136,7 +155,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       decoded = do_decode(rows, types, mapper)
       %Mariaex.Result{res | command: command,
                             rows: decoded,
-                            columns: (for {type, _} <- types, do: type),
+                            columns: (for {type, _, _} <- types, do: type),
                             num_rows: length(decoded)}
     end
   end
@@ -160,33 +179,38 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [{_name, type} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
-    {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet)
+  def decode_bin_rows(packet, [{_name, type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+    {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end
 
-  defp handle_decode_bin_rows({:string, _mysql_type}, packet),              do: length_encoded_string(packet)
-  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet),        do: parse_int_packet(packet, 8)
-  defp handle_decode_bin_rows({:integer, :field_type_short}, packet),       do: parse_int_packet(packet, 16)
-  defp handle_decode_bin_rows({:integer, :field_type_int24}, packet),       do: parse_int_packet(packet, 32)
-  defp handle_decode_bin_rows({:integer, :field_type_long}, packet),        do: parse_int_packet(packet, 32)
-  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet),    do: parse_int_packet(packet, 64)
-  defp handle_decode_bin_rows({:integer, :field_type_year}, packet),        do: parse_int_packet(packet, 16)
-  defp handle_decode_bin_rows({:time, :field_type_time}, packet),           do: parse_time_packet(packet)
-  defp handle_decode_bin_rows({:date, :field_type_date}, packet),           do: parse_date_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet),  do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet), do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet),  do: parse_decimal_packet(packet)
-  defp handle_decode_bin_rows({:float, :field_type_float}, packet),         do: parse_float_packet(packet, 32)
-  defp handle_decode_bin_rows({:float, :field_type_double}, packet),        do: parse_float_packet(packet, 64)
-  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet),             do: parse_bit_packet(packet)
+  defp handle_decode_bin_rows({:string, _mysql_type}, packet, _),              do: length_encoded_string(packet)
+  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet, flags),        do: parse_int_packet(packet, 8, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_short}, packet, flags),       do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_int24}, packet, flags),       do: parse_int_packet(packet, 32, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_long}, packet, flags),        do: parse_int_packet(packet, 32, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet, flags),    do: parse_int_packet(packet, 64, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_year}, packet, flags),        do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows({:time, :field_type_time}, packet, _),           do: parse_time_packet(packet)
+  defp handle_decode_bin_rows({:date, :field_type_date}, packet, _),           do: parse_date_packet(packet)
+  defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet, _),  do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet, _), do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet, _),  do: parse_decimal_packet(packet)
+  defp handle_decode_bin_rows({:float, :field_type_float}, packet, _),         do: parse_float_packet(packet, 32)
+  defp handle_decode_bin_rows({:float, :field_type_double}, packet, _),        do: parse_float_packet(packet, 64)
+  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet, _),             do: parse_bit_packet(packet)
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet
     {value, rest}
   end
 
-  defp parse_int_packet(packet, size) do
+  defp parse_int_packet(packet, size, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    << value :: size(size)-little-unsigned, rest :: binary >> = packet
+    {value, rest}
+  end
+
+  defp parse_int_packet(packet, size, _flags) do
     << value :: size(size)-little-signed, rest :: binary >> = packet
     {value, rest}
   end

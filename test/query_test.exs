@@ -79,6 +79,17 @@ defmodule QueryTest do
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, -128]]
   end
 
+  test "booleen and unsigned tiny int tests", context do
+    table = "boolean_test_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint unsigned)", [])
+
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 255])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, 0])
+
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [[0, 255]]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, 0]]
+  end
+
   test "support numeric data types using prepared statements", context do
     integer = 16
     float   = 0.1
@@ -305,6 +316,22 @@ defmodule QueryTest do
     # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
   end
 
+  test "decode unsigned smallint", context do
+    table = "test_smallint_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield smallint UNSIGNED)", [])
+
+    max_unsigned = 65535
+    min_unsigned = 0
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_unsigned])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_unsigned])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_unsigned]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_unsigned]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
   test "decode mediumint", context do
     table = "test_mediumint"
     :ok = query("CREATE TABLE #{table} (id serial, testfield mediumint)", [])
@@ -318,6 +345,38 @@ defmodule QueryTest do
     # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
     assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_signed]]
     assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_signed]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
+  test "decode bigint", context do
+    table = "test_bigint"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield bigint)", [])
+
+    max_signed = 9223372036854775807
+    min_signed = -9223372036854775808
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_signed])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_signed]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_signed]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
+  test "decode unsigned bigint", context do
+    table = "test_bigint_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield bigint UNSIGNED)", [])
+
+    max_unsigned = 18446744073709551615
+    min_unsigned = 0
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_unsigned])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_unsigned])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_unsigned]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_unsigned]]
     # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
   end
 

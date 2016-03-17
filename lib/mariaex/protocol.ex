@@ -253,8 +253,8 @@ defmodule Mariaex.Protocol do
     prepare_may_recv_more(%{state | state: :column_definitions, catch_eof: not state.protocol57, state_data: statedata}, %{query | statement_id: id})
   end
   defp handle_prepare_send(packet(msg: column_definition_41() = msg), %{types: types} = query, state) do
-    column_definition_41(type: type, name: name) = msg
-    query = %{query | types: [{name, type} | types]}
+    column_definition_41(type: type, name: name, flags: flags) = msg
+    query = %{query | types: [{name, type, flags} | types]}
     {query, state} = count_down(query, state)
     prepare_may_recv_more(state, query)
   end
@@ -332,8 +332,8 @@ defmodule Mariaex.Protocol do
     binary_query_recv(%{state | state: :column_definitions, state_data: {count, 0}}, %{query | types: []})
   end
   defp handle_binary_query(packet(msg: column_definition_41() = msg), %{types: types} = query, s) do
-    column_definition_41(type: type, name: name) = msg
-    query = %{query | types: [{name, type} | types]}
+    column_definition_41(type: type, name: name, flags: flags) = msg
+    query = %{query | types: [{name, type, flags} | types]}
     {query, s} = count_down(query, s)
     s = if s.state_data == {0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
     binary_query_recv(s, query)
