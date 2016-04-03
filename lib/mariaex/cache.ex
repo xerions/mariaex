@@ -25,7 +25,7 @@ defmodule Mariaex.Cache do
   """
   def delete(cache, name, cleanup) do
     case :ets.lookup(cache, name) do
-      [{_, _, info}] ->
+      [{_, info}] ->
         :ets.delete(cache, name)
         cleanup.(name, info)
       _ ->
