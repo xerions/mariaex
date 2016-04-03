@@ -144,8 +144,14 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def disconnect(_, _state = %{sock: {sock_mod, sock}}) do
-    sock_mod.close(sock)
+  def disconnect(_, state = %{sock: {sock_mod, sock}}) do
+    msg_send(text_cmd(command: com_quit, statement: ""), state, 0)
+    case msg_recv(state) do
+      {:ok, packet(msg: ok_resp())} ->
+        sock_mod.close(sock)
+      {:error, :closed} ->
+        :ok
+    end
     _ = sock_mod.recv_active(sock, 0, "")
     :ok
   end
@@ -331,7 +337,7 @@ defmodule Mariaex.Protocol do
   defp handle_binary_query(packet(msg: column_count(column_count: count)), query, state) do
     binary_query_recv(%{state | state: :column_definitions, state_data: {count, 0}}, %{query | types: []})
   end
-  defp handle_binary_query(packet(msg: column_definition_41() = msg),   query, s) do
+  defp handle_binary_query(packet(msg: column_definition_41() = msg), query, s) do
     query = add_column(query, msg)
     {query, s} = count_down(query, s)
     s = if s.state_data == {0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
@@ -543,13 +549,22 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  def_handle :ping_recv, :ping_handle
   @doc """
   DBConnection callback
   """
-  def ping(s) do
-    #msg_send(text_cmd(command: com_ping, statement: ""), s, 0)
-    #%{s | state: :ping}
-    {:ok, s}
+  def ping(state) do
+    case checkout(state) do
+      {:ok, state} ->
+        msg_send(text_cmd(command: com_ping, statement: ""), state, 0)
+        ping_recv(state, :ping)
+      disconnect ->
+        disconnect
+    end
+  end
+
+  defp ping_handle(packet(msg: ok_resp()), :ping, state) do
+    activate(state, state.buffer)
   end
 
   defp send_text_query(s, statement) do
