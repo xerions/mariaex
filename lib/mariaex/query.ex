@@ -29,6 +29,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   use Bitwise
   import Mariaex.Coder.Utils
   alias Mariaex.Messages
+  alias Mariaex.Column
 
   @doc """
   Parse a query.
@@ -153,14 +154,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       %Mariaex.Result{rows: rows} = res
       types = Enum.reverse(types)
       decoded = do_decode(rows, types, mapper)
-      columns = for {name, table, _, _} <- types do
-        if opts[:include_table_name] do
-          table <> "." <> name
-        else
-          name
-        end
-      end
-
+      include_table_name = opts[:include_table_name]
+      columns = for %Column{} = column <- types, do: column_name(column, include_table_name)
       %Mariaex.Result{res | command: command,
                             rows: decoded,
                             columns: columns,
@@ -169,6 +164,9 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   end
 
   ## helpers
+
+  defp column_name(%Column{name: name, table: table}, true), do: "#{table}.#{name}"
+  defp column_name(%Column{name: name}, _), do: name
 
   def do_decode(_, types, mapper \\ fn x -> x end)
   def do_decode(rows, types, mapper) do
@@ -187,7 +185,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [{_name, _table, type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+  def decode_bin_rows(packet, [%Column{type: type, flags: flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
     {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end

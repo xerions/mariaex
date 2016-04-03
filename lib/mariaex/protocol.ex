@@ -4,6 +4,7 @@ defmodule Mariaex.Protocol do
   alias Mariaex.Cache
   alias Mariaex.LruCache
   alias Mariaex.Query
+  alias Mariaex.Column
   import Mariaex.Messages
   import Mariaex.ProtocolHelper
 
@@ -252,9 +253,8 @@ defmodule Mariaex.Protocol do
     statedata = {columns, params}
     prepare_may_recv_more(%{state | state: :column_definitions, catch_eof: not state.protocol57, state_data: statedata}, %{query | statement_id: id})
   end
-  defp handle_prepare_send(packet(msg: column_definition_41() = msg), %{types: types} = query, state) do
-    column_definition_41(type: type, name: name, flags: flags, table: table) = msg
-    query = %{query | types: [{name, table, type, flags} | types]}
+  defp handle_prepare_send(packet(msg: column_definition_41() = msg), query, state) do
+    query = add_column(query, msg)
     {query, state} = count_down(query, state)
     prepare_may_recv_more(state, query)
   end
@@ -331,9 +331,8 @@ defmodule Mariaex.Protocol do
   defp handle_binary_query(packet(msg: column_count(column_count: count)), query, state) do
     binary_query_recv(%{state | state: :column_definitions, state_data: {count, 0}}, %{query | types: []})
   end
-  defp handle_binary_query(packet(msg: column_definition_41() = msg), %{types: types} = query, s) do
-    column_definition_41(type: type, name: name, flags: flags, table: table) = msg
-    query = %{query | types: [{name, table, type, flags} | types]}
+  defp handle_binary_query(packet(msg: column_definition_41() = msg),   query, s) do
+    query = add_column(query, msg)
     {query, s} = count_down(query, s)
     s = if s.state_data == {0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
     binary_query_recv(s, query)
@@ -360,6 +359,11 @@ defmodule Mariaex.Protocol do
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
     {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, %{s | rows: []}}
+  end
+
+  defp add_column(query, column_definition_41(type: type, name: name, flags: flags, table: table)) do
+    column = %Column{name: name, table: table, type: type, flags: flags}
+    %{query | types: [column | query.types]}
   end
 
   @doc """
