@@ -118,6 +118,9 @@ defmodule Mariaex do
        (default: `fn x -> x end`)
     * `:decode_mapper` - Fun to map each row in the result to a term after
        decoding, (default: `fn x -> x end`);
+    * `:include_table_name` - Boolean specifying whether the `columns` list in
+       the result prepends the table name to the column name with a period.
+       (default `false`)
 
   ## Examples
 

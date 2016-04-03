@@ -403,6 +403,44 @@ defmodule QueryTest do
     assert res.num_rows == 1
   end
 
+  test "columns list includes table name when include_table_name option is specified", context do
+    table = "table_name_test"
+    :ok = query("CREATE TABLE #{table} (id serial, name varchar(50))", [])
+    :ok = query("INSERT INTO #{table} (id, name) VALUES(?, ?)", [1, "test_name"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT id, name FROM #{table}", [], include_table_name: true)
+
+    assert %Mariaex.Result{} = res
+    assert res.columns == ["#{table}.id", "#{table}.name"]
+  end
+
+  test "columns list on join associates columns with the correct table", context do
+    table1 = "table_name_test_1"
+    table2 = "table_name_test_2"
+    :ok = query("CREATE TABLE #{table1} (id serial, name varchar(50))", [])
+    :ok = query("CREATE TABLE #{table2} (id serial, table1_id integer, name varchar(50))", [])
+
+    :ok = query("INSERT INTO #{table1} (id, name) VALUES(?, ?)", [1, "test_name_1"])
+    :ok = query("INSERT INTO #{table2} (id, table1_id, name) VALUES(?, ?, ?)", [10, 1, "test_name_2"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM #{table1} JOIN #{table2} ON #{table1}.id = #{table2}.table1_id", [], include_table_name: true)
+
+    assert res.columns == ["#{table1}.id", "#{table1}.name", "#{table2}.id", "#{table2}.table1_id", "#{table2}.name"]
+    assert res.num_rows == 1
+    assert List.first(res.rows) == [1, "test_name_1", 10, 1, "test_name_2"]
+  end
+
+  test "columns list uses alias as table name when inclue_table_name option is specified", context do
+    table = "table_alias_test"
+    :ok = query("CREATE TABLE #{table} (id serial, name varchar(50))", [])
+    :ok = query("INSERT INTO #{table} (id, name) VALUES(?, ?)", [1, "test_name"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT id, name FROM #{table} t1", [], include_table_name: true)
+
+    assert %Mariaex.Result{} = res
+    assert res.columns == ["t1.id", "t1.name"]
+  end
+
   test "result struct on update", context do
     table = "struct_on_update"
 

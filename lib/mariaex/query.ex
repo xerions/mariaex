@@ -153,9 +153,17 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       %Mariaex.Result{rows: rows} = res
       types = Enum.reverse(types)
       decoded = do_decode(rows, types, mapper)
+      columns = for {name, table, _, _} <- types do
+        if opts[:include_table_name] do
+          table <> "." <> name
+        else
+          name
+        end
+      end
+
       %Mariaex.Result{res | command: command,
                             rows: decoded,
-                            columns: (for {type, _, _} <- types, do: type),
+                            columns: columns,
                             num_rows: length(decoded)}
     end
   end
@@ -179,7 +187,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [{_name, type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+  def decode_bin_rows(packet, [{_name, _table, type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
     {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end
