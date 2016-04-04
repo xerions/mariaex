@@ -149,7 +149,9 @@ defmodule Mariaex.Protocol do
     case msg_recv(state) do
       {:ok, packet(msg: ok_resp())} ->
         sock_mod.close(sock)
-      {:error, :closed} ->
+      {:ok, packet(msg: _)} ->
+        sock_mod.close(sock)
+      {:error, _} ->
         :ok
     end
     _ = sock_mod.recv_active(sock, 0, "")
