@@ -205,13 +205,13 @@ defmodule Mariaex.Messages do
   def decode(rest, _state),
     do: {nil, rest}
 
+  defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :handshake),                                               do: __decode__(:handshake, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :bin_rows),                    do: __decode__(:bin_row, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :prepare_send),                do: __decode__(:stmt_prepare_ok, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, _),                            do: __decode__(:ok_resp, body)
   defp decode_msg(<< 254 >> = _body, _),                                           do: :mysql_old_password
   defp decode_msg(<< 254 :: 8, _ :: binary >> = body, _) when byte_size(body) < 9, do: __decode__(:eof_resp, body)
-  defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
 end
