@@ -1,3 +1,8 @@
+# 0.7.1
+
+* Bug fixes
+  * fix tcp connect lost handshake packet
+
 # 0.7.0
 
 * Enhancements
