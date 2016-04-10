@@ -140,7 +140,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: reverse_bits(t, <<h::1, acc::bits>>)
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
-                          :alter, :rename, :drop, :begin, :commit, :rollback]
+                          :alter, :rename, :drop, :begin, :commit, :rollback,
+                          :savepoint, :execute, :prepare]
 
   @unsigned_flag 0x20
 

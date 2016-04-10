@@ -1,3 +1,9 @@
+# 0.7.2
+
+* Bug fixes
+  * fix backwards compatibility for ecto 1.1
+  * fix wrong handling of savepoint, extra prepare, execute command
+
 # 0.7.1
 
 * Bug fixes
