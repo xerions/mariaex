@@ -126,7 +126,7 @@ defmodule Mariaex.Protocol do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, state} ->
-        activate(%{state | state: :running}, state.buffer) |> connected()
+        activate(state, state.buffer) |> connected()
     end
   end
   defp handle_handshake(packet, query, state) do
@@ -185,14 +185,14 @@ defmodule Mariaex.Protocol do
   ## Fake [active: once] if buffer not empty
   defp activate(s, <<>>) do
     case setopts(s, [active: :once], <<>>) do
-      :ok  -> {:ok, %{s | buffer: :active_once}}
+      :ok  -> {:ok, %{s | buffer: :active_once, state: :running}}
       other -> other
     end
   end
   defp activate(%{sock: {mod, sock}} = s, buffer) do
     msg = mod.fake_message(sock, buffer)
     send(self(), msg)
-    {:ok, s}
+    {:ok, %{s | state: :running}}
   end
 
   defp setopts(%{sock: {mod, sock}} = s, opts, buffer) do
@@ -276,7 +276,7 @@ defmodule Mariaex.Protocol do
 
   defp prepare_may_recv_more(%{state_data: {0, 0}, catch_eof: false, connection_ref: ref} = state, query) do
     cache_insert(query, state)
-    {:ok, %{query | connection_ref: ref}, state}
+    {:ok, %{query | connection_ref: ref}, clean_state(state)}
   end
   defp prepare_may_recv_more(state, query) do
     prepare_recv(%{state | state: :column_definitions}, query)
@@ -353,7 +353,7 @@ defmodule Mariaex.Protocol do
       catch_eof ->
         binary_query_recv(%{s | catch_eof: false}, query)
       true ->
-        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, %{s | rows: []}}
+        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
   end
   defp handle_binary_query(packet(msg: bin_row(row: row)), query, s = %{rows: acc}) do
@@ -366,12 +366,16 @@ defmodule Mariaex.Protocol do
   defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
-    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, %{s | rows: []}}
+    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
   end
 
   defp add_column(query, column_definition_41(type: type, name: name, flags: flags, table: table)) do
     column = %Column{name: name, table: table, type: type, flags: flags}
     %{query | types: [column | query.types]}
+  end
+
+  defp clean_state(state) do
+    %{state | state: :running, rows: []}
   end
 
   @doc """
@@ -591,10 +595,10 @@ defmodule Mariaex.Protocol do
 
   def close_statement(s = %{sock: sock, lru_cache: cache}, %{statement: statement}) do
     LruCache.delete(cache, statement, &close_statement(&1, &2, sock))
-    %{s | state: :running}
+    clean_state(s)
   end
   def close_statement(s = %{}, _) do
-    %{s | state: :running}
+    clean_state(s)
   end
 
   defp reserved_error(query, s) do

@@ -1,3 +1,8 @@
+# 0.7.3
+
+* Bug fixes
+  * clean state on end of execution
+
 # 0.7.2
 
 * Bug fixes

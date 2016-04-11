@@ -55,9 +55,6 @@ defmodule Mariaex do
     * `:charset` - Database encoding (default: "utf8");
     * `:socket_options` - Options to be given to the underlying socket;
     * `:cache_size` - Prepared statement cache size (default: 100);
-    * `:keepalive` - Enable keepalive (default: false), please note, it is not considered stable API;
-    * `:keepalive_interval` - Keepalive interval (default: 60000);
-    * `:keepalive_timeout` - Keepalive timeout (default: 5000);
     * `:insecure_auth` - Secure authorization (default: false)
     * `:after_connect` - A function to run on connect, either a 1-arity fun
        called with a connection reference, `{module, function, args}` with the
