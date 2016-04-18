@@ -1,3 +1,8 @@
+# 0.7.4
+
+* Bug fixes
+  * make function for getting formated version more robust to different formats
+
 # 0.7.3
 
 * Bug fixes

@@ -614,12 +614,17 @@ defmodule Mariaex.Protocol do
   end
   def get_command(nil), do: nil
 
-  defp get_3_digits_version(server_version) do
-    server_version
-    |> String.split("-", parts: 2)
-    |> hd
-    |> String.split(".")
-    |> Enum.slice(0,3)
-    |> Enum.join(".")
+  def get_3_digits_version(string) do
+    [major, minor, rest] = String.split(string, ".", parts: 3)
+    bugfix = digits(rest)
+    "#{major}.#{minor}.#{bugfix}"
+  end
+
+  defp digits(string, acc \\ [])
+  defp digits(<<c, rest :: binary>>, acc) when c >= ?0 and c <= ?9 do
+    digits(rest, [c | acc])
+  end
+  defp digits(_, acc) do
+    acc |> Enum.reverse()
   end
 end
