@@ -3,7 +3,7 @@ defmodule PreparedQueryTest do
   import Mariaex.TestHelper
 
   setup do
-    opts = [database: "mariaex_test", username: "root", backoff_type: :stop]
+    opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end
