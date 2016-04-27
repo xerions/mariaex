@@ -68,7 +68,7 @@ defmodule QueryTest do
     assert query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", []) == [[binary]]
   end
 
-  test "booleen and tiny int tests", context do
+  test "boolean and tiny int tests", context do
     table = "boolean_test"
     :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint)", [])
 
@@ -79,7 +79,7 @@ defmodule QueryTest do
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, -128]]
   end
 
-  test "booleen and unsigned tiny int tests", context do
+  test "boolean and unsigned tiny int tests", context do
     table = "boolean_test_unsigned"
     :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint unsigned)", [])
 
