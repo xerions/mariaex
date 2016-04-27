@@ -74,9 +74,11 @@ defmodule QueryTest do
 
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 127])
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, -128])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [3, false, -128])
 
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [[0, 127]]
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, -128]]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [3]) == [[0, -128]]
   end
 
   test "boolean and unsigned tiny int tests", context do
