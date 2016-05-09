@@ -1,3 +1,8 @@
+# 0.7.5
+
+* Enhancements
+  * support writing of latin1 tables
+
 # 0.7.4
 
 * Bug fixes
