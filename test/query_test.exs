@@ -68,18 +68,20 @@ defmodule QueryTest do
     assert query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", []) == [[binary]]
   end
 
-  test "booleen and tiny int tests", context do
+  test "boolean and tiny int tests", context do
     table = "boolean_test"
     :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint)", [])
 
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 127])
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, -128])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [3, false, -128])
 
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [[0, 127]]
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, -128]]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [3]) == [[0, -128]]
   end
 
-  test "booleen and unsigned tiny int tests", context do
+  test "boolean and unsigned tiny int tests", context do
     table = "boolean_test_unsigned"
     :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint unsigned)", [])
 
@@ -504,6 +506,13 @@ defmodule QueryTest do
     :ok = query("INSERT INTO test_charset VALUES (?, ?)", [1, "忍者"])
 
     assert query("SELECT * FROM test_charset where id = 1", []) == [[1, "忍者"]]
+  end
+
+  test "non ascii character to latin1 table", context do
+    :ok = query("CREATE TABLE test_charset_latin1 (id int, text text) DEFAULT CHARSET=latin1", [])
+    :ok = query("INSERT INTO test_charset_latin1 VALUES (?, ?)", [1, "ÖÄÜß"])
+
+    assert query("SELECT * FROM test_charset_latin1 where id = 1", []) == [[1, "ÖÄÜß"]]
   end
 
   test "test nullbit", context do
