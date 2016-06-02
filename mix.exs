@@ -15,7 +15,7 @@ defmodule Mariaex.Mixfile do
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :decimal, :db_connection]]
+    [applications: [:logger, :crypto, :decimal, :db_connection]]
   end
 
   defp deps do
