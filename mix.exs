@@ -20,7 +20,7 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:db_connection, "~> 0.2"},
+     {:db_connection, github: "fishcakez/db_connection"},
      {:coverex, "~> 1.4.3", only: :test}]
   end
 

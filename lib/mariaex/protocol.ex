@@ -303,11 +303,6 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_execute_close(query, params, opts, s), do: handle_execute(query, params, opts, s)
-
-  @doc """
-  DBConnection callback
-  """
   def handle_execute(%Query{name: @reserved_prefix <> _, reserved?: false} = query, _, s) do
     reserved_error(query, s)
   end
