@@ -19,7 +19,8 @@ defmodule Mariaex.Query do
             statement_id: nil,
             parameter_types: [],
             types: [],
-            connection_ref: nil
+            connection_ref: nil,
+            json_library: nil
 end
 
 defimpl DBConnection.Query, for: Mariaex.Query do
@@ -57,9 +58,9 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def encode(%Mariaex.Query{types: nil} = query, _params, _opts) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
-  def encode(%Mariaex.Query{type: :binary, parameter_types: parameter_types} = query, params, _opts) do
+  def encode(%Mariaex.Query{type: :binary, parameter_types: parameter_types, json_library: json_library} = query, params, _opts) do
     if length(params) == length(parameter_types) do
-      parameter_types |> Enum.zip(params) |> parameters_to_binary()
+      parameter_types |> Enum.zip(params) |> parameters_to_binary(json_library)
     else
       raise ArgumentError, "parameters must be of length #{length params} for query #{inspect query}"
     end
@@ -68,15 +69,15 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     params
   end
 
-  defp parameters_to_binary([]), do: <<>>
-  defp parameters_to_binary(params) do
+  defp parameters_to_binary([], _json_library), do: <<>>
+  defp parameters_to_binary(params, json_library) do
     set = {<<>>, <<>>, <<>>}
-    {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc) end)
+    {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, json_library, acc) end)
     << null_map_to_mysql(nullbits, <<>>) :: binary, 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
-  defp encode_params({_, param}, {nullbits, typesbin, valuesbin}) do
-    {nullbit, type, value} = encode_param(param)
+  defp encode_params({_, param}, json_library, {nullbits, typesbin, valuesbin}) do
+    {nullbit, type, value} = encode_param(param, json_library)
 
     types_part = case type do
       :field_type_longlong ->
@@ -97,33 +98,37 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     }
   end
 
-  defp encode_param(nil),
+  defp encode_param(nil, _),
     do: {1, :field_type_null, ""}
-  defp encode_param(bin) when is_binary(bin),
+  defp encode_param(json, json_library) when is_map(json) do
+    bin = json_library.encode!(json)
+    {0, :field_type_var_string, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  end
+  defp encode_param(bin, _) when is_binary(bin),
     do: {0, :field_type_var_string, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
-  defp encode_param(int) when is_integer(int),
+  defp encode_param(int, _) when is_integer(int),
     do: {0, :field_type_longlong, << int :: 64-little >>}
-  defp encode_param(float) when is_float(float),
+  defp encode_param(float, _) when is_float(float),
     do: {0, :field_type_double, << float :: 64-little-float >>}
-  defp encode_param(true),
+  defp encode_param(true, _),
     do: {0, :field_type_tiny, << 01 >>}
-  defp encode_param(false),
+  defp encode_param(false, _),
     do: {0, :field_type_tiny, << 00 >>}
-  defp encode_param(%Decimal{} = value) do
+  defp encode_param(%Decimal{} = value, _) do
     bin = Decimal.to_string(value, :normal)
     {0, :field_type_newdecimal, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
   end
-  defp encode_param({year, month, day}),
+  defp encode_param({year, month, day}, _),
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
-  defp encode_param({hour, min, sec, 0}),
+  defp encode_param({hour, min, sec, 0}, _),
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
-  defp encode_param({hour, min, sec, msec}),
+  defp encode_param({hour, min, sec, msec}, _),
     do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, 0}}),
+  defp encode_param({{year, month, day}, {hour, min, sec, 0}}, _),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, msec}}),
+  defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
-  defp encode_param(other),
+  defp encode_param(other, _),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 
   defp null_map_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do
@@ -146,7 +151,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
-  def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
+  def decode(%Mariaex.Query{statement: statement, json_library: json_library}, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
     if command in @commands_without_rows do
       %Mariaex.Result{res | command: command, rows: nil}
@@ -154,7 +159,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       mapper = opts[:decode_mapper] || fn x -> x end
       %Mariaex.Result{rows: rows} = res
       types = Enum.reverse(types)
-      decoded = do_decode(rows, types, mapper)
+      decoded = do_decode(rows, json_library, types, mapper)
       include_table_name = opts[:include_table_name]
       columns = for %Column{} = column <- types, do: column_name(column, include_table_name)
       %Mariaex.Result{res | command: command,
@@ -169,43 +174,60 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp column_name(%Column{name: name, table: table}, true), do: "#{table}.#{name}"
   defp column_name(%Column{name: name}, _), do: name
 
-  def do_decode(_, types, mapper \\ fn x -> x end)
-  def do_decode(rows, types, mapper) do
-    rows |> Enum.reduce([], &([(decode_bin_rows(&1, types) |> mapper.()) | &2]))
+  def do_decode(_, json_library, types, mapper \\ fn x -> x end)
+  def do_decode(rows, json_library, types, mapper) do
+    rows |> Enum.reduce([], &([(decode_bin_rows(&1, types, json_library) |> mapper.()) | &2]))
   end
 
-  def decode_bin_rows(packet, fields) do
+  def decode_bin_rows(packet, fields, json_library) do
     nullbin_size = div(length(fields) + 7 + 2, 8)
     << 0 :: 8, nullbin :: size(nullbin_size)-binary, rest :: binary >> = packet
     nullbin = null_map_from_mysql(nullbin)
-    decode_bin_rows(rest, fields, nullbin, [])
+    decode_bin_rows(rest, fields, nullbin, [], json_library)
   end
-  def decode_bin_rows(<<>>, [], _, acc) do
+  def decode_bin_rows(<<>>, [], _, acc, _) do
     Enum.reverse(acc)
   end
-  def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
-    decode_bin_rows(packet, fields, nullrest, [nil | acc])
+  def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc, json_library) do
+    decode_bin_rows(packet, fields, nullrest, [nil | acc], json_library)
   end
-  def decode_bin_rows(packet, [%Column{type: type, flags: flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
-    {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
-    decode_bin_rows(next, fields, nullrest, [value | acc])
+  def decode_bin_rows(packet, [%Column{type: type, flags: flags} | fields], << 0 :: 1, nullrest :: bits >>, acc, json_library) do
+    {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags, json_library)
+    decode_bin_rows(next, fields, nullrest, [value | acc], json_library)
   end
 
-  defp handle_decode_bin_rows({:string, _mysql_type}, packet, _),              do: length_encoded_string(packet)
-  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet, flags),        do: parse_int_packet(packet, 8, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_short}, packet, flags),       do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_int24}, packet, flags),       do: parse_int_packet(packet, 32, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_long}, packet, flags),        do: parse_int_packet(packet, 32, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet, flags),    do: parse_int_packet(packet, 64, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_year}, packet, flags),        do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows({:time, :field_type_time}, packet, _),           do: parse_time_packet(packet)
-  defp handle_decode_bin_rows({:date, :field_type_date}, packet, _),           do: parse_date_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet, _),  do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet, _), do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet, _),  do: parse_decimal_packet(packet)
-  defp handle_decode_bin_rows({:float, :field_type_float}, packet, _),         do: parse_float_packet(packet, 32)
-  defp handle_decode_bin_rows({:float, :field_type_double}, packet, _),        do: parse_float_packet(packet, 64)
-  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet, _),             do: parse_bit_packet(packet)
+  defp handle_decode_bin_rows({:string, _mysql_type}, packet, _, _),
+    do: length_encoded_string(packet)
+  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet, flags, _),
+    do: parse_int_packet(packet, 8, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_short}, packet, flags, _),
+    do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_int24}, packet, flags, _),
+    do: parse_int_packet(packet, 32, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_long}, packet, flags, _),
+    do: parse_int_packet(packet, 32, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet, flags, _),
+    do: parse_int_packet(packet, 64, flags)
+  defp handle_decode_bin_rows({:integer, :field_type_year}, packet, flags, _),
+    do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows({:time, :field_type_time}, packet, _, _),
+    do: parse_time_packet(packet)
+  defp handle_decode_bin_rows({:date, :field_type_date}, packet, _, _),
+    do: parse_date_packet(packet)
+  defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet, _, _),
+    do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet, _, _),
+    do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet, _, _),
+    do: parse_decimal_packet(packet)
+  defp handle_decode_bin_rows({:float, :field_type_float}, packet, _, _),
+    do: parse_float_packet(packet, 32)
+  defp handle_decode_bin_rows({:float, :field_type_double}, packet, _, _),
+    do: parse_float_packet(packet, 64)
+  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet, _, _),
+    do: parse_bit_packet(packet)
+  defp handle_decode_bin_rows({:json, :field_type_json}, packet, _, json_library),
+    do: parse_json_packet(packet, json_library)
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet
@@ -265,6 +287,11 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     {bitstring, rest} = length_encoded_string(packet)
     ## TODO: implement right decoding of bit string, if somebody will need it.
     {bitstring, rest}
+  end
+
+  defp parse_json_packet(packet, json_library) do
+    {string, rest} = length_encoded_string(packet)
+    {json_library.decode!(string), rest}
   end
 
   defp null_map_from_mysql(nullbin) do

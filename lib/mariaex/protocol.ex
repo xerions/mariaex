@@ -40,7 +40,7 @@ defmodule Mariaex.Protocol do
 
   defstruct [sock: nil, connection_ref: nil, state: nil, state_data: nil, protocol57: false,
              rows: [], connection_id: nil, opts: [], catch_eof: false, buffer: "", timeout: 0,
-             lru_cache: nil, cache: nil, seqnum: 0]
+             lru_cache: nil, cache: nil, seqnum: 0, json_library: nil]
 
   @doc """
   DBConnection callback
@@ -50,6 +50,7 @@ defmodule Mariaex.Protocol do
     sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
     sock_mod     = Module.concat(Mariaex.Connection, sock_type)
     host         = opts[:hostname]
+    json_library = opts[:json_library]
     host         = if is_binary(host), do: String.to_char_list(host), else: host
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
 
@@ -62,7 +63,8 @@ defmodule Mariaex.Protocol do
                         cache: Cache.new(),
                         lru_cache: LruCache.new(opts[:cache_size]),
                         timeout: opts[:timeout],
-                        opts: opts}
+                        opts: opts,
+                        json_library: json_library}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
@@ -220,13 +222,17 @@ defmodule Mariaex.Protocol do
   def handle_prepare(%Query{type: :text} = query, _, s) do
     {:ok, query, s}
   end
-  def handle_prepare(%Query{type: :binary, statement: statement} = query, _, %{connection_ref: ref} = s) do
+  def handle_prepare(%Query{type: :binary, statement: statement} = query, _, %{connection_ref: ref, json_library: json_library} = s) do
     case cache_lookup(query, s) do
       {id, types, parameter_types} ->
-        {:ok, %{query | statement_id: id, types: types, parameter_types: parameter_types, connection_ref: ref}, s}
+        {:ok, %{query | statement_id: id,
+                        types: types,
+                        parameter_types: parameter_types,
+                        connection_ref: ref,
+                        json_library: json_library}, s}
       nil ->
         msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-        prepare_recv(%{s | state: :prepare_send}, query)
+        prepare_recv(%{s | state: :prepare_send}, %{query | json_library: json_library})
     end
   end
 

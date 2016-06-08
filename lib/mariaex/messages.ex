@@ -66,7 +66,9 @@ defmodule Mariaex.Messages do
             field_type_var_string: 0xfd,
             field_type_string: 0xfe],
           null:
-           [field_type_null: 0x06]
+           [field_type_null: 0x06],
+          json:
+           [field_type_json: 0xf5]
          ]
 
   def __type__(:decode, _type, nil), do: nil
