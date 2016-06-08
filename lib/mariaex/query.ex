@@ -27,6 +27,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   alias Mariaex.Messages
   alias Mariaex.Column
 
+  @json_library Poison
+
   @doc """
   Parse a query.
 
@@ -57,23 +59,25 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       when length(params) != num_params do
     raise ArgumentError, "parameters must be of length #{num_params} for query #{inspect query}"
   end
-  def encode(%Mariaex.Query{type: :binary, binary_as: binary_as}, params, _opts) do
-    parameters_to_binary(params, binary_as)
+  def encode(%Mariaex.Query{type: :binary, binary_as: binary_as}, params, opts) do
+    json_library = Keyword.get(opts, :json_library, @json_library)
+
+    parameters_to_binary(params, binary_as, json_library)
   end
   def encode(%Mariaex.Query{type: :text}, params, _opts) do
     params
   end
 
-  defp parameters_to_binary([], _binary_as), do: <<>>
-  defp parameters_to_binary(params, binary_as) do
+  defp parameters_to_binary([], _binary_as, _json_library), do: <<>>
+  defp parameters_to_binary(params, binary_as, json_library) do
     set = {0, 0, <<>>, <<>>}
-    {nullint, len, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
+    {nullint, len, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as, json_library) end)
     nullbin_size = div(len + 7, 8)
     << nullint :: size(nullbin_size)-little-unit(8), 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
-  defp encode_params(param, {nullint, idx, typesbin, valuesbin}, binary_as) do
-    {nullvalue, type, value} = encode_param(param, binary_as)
+  defp encode_params(param, {nullint, idx, typesbin, valuesbin}, binary_as, json_library) do
+    {nullvalue, type, value} = encode_param(param, binary_as, json_library)
 
     types_part = case type do
       :field_type_longlong ->
@@ -95,35 +99,39 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     }
   end
 
-  defp encode_param(nil, _binary_as),
+  defp encode_param(nil, _binary_as, _json_library),
     do: {1, :field_type_null, ""}
-  defp encode_param(bin, binary_as) when is_binary(bin),
-    do: {0, binary_as, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
-  defp encode_param(int, _binary_as) when is_integer(int),
-    do: {0, :field_type_longlong, << int :: 64-little >>}
-  defp encode_param(float, _binary_as) when is_float(float),
-    do: {0, :field_type_double, << float :: 64-little-float >>}
-  defp encode_param(true, _binary_as),
-    do: {0, :field_type_tiny, << 01 >>}
-  defp encode_param(false, _binary_as),
-    do: {0, :field_type_tiny, << 00 >>}
-  defp encode_param(%Decimal{} = value, _binary_as) do
+  defp encode_param(%Decimal{} = value, _binary_as, _json_library) do
     bin = Decimal.to_string(value, :normal)
     {0, :field_type_newdecimal, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
   end
-  defp encode_param({year, month, day}, _binary_as),
+  defp encode_param(json, _binary_as, json_library) when is_map(json) do
+    bin = json_library.encode!(json)
+    {0, :field_type_var_string, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  end
+  defp encode_param(bin, binary_as, _json_library) when is_binary(bin),
+    do: {0, binary_as, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  defp encode_param(int, _binary_as, _json_library) when is_integer(int),
+    do: {0, :field_type_longlong, << int :: 64-little >>}
+  defp encode_param(float, _binary_as, _json_library) when is_float(float),
+    do: {0, :field_type_double, << float :: 64-little-float >>}
+  defp encode_param(true, _binary_as, _json_library),
+    do: {0, :field_type_tiny, << 01 >>}
+  defp encode_param(false, _binary_as, _json_library),
+    do: {0, :field_type_tiny, << 00 >>}
+  defp encode_param({year, month, day}, _binary_as, _json_library),
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
-  defp encode_param({hour, min, sec, 0}, _binary_as),
+  defp encode_param({hour, min, sec, 0}, _binary_as, _json_library),
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
-  defp encode_param({hour, min, sec, msec}, _binary_as),
+  defp encode_param({hour, min, sec, msec}, _binary_as, _json_library),
     do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec}}, _binary_as),
+  defp encode_param({{year, month, day}, {hour, min, sec}}, _binary_as, _json_library),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, 0}}, _binary_as),
+  defp encode_param({{year, month, day}, {hour, min, sec, 0}}, _binary_as, _json_library),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
+  defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as, _json_library),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
-  defp encode_param(other, _binary_as),
+  defp encode_param(other, _binary_as, _json_library),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,

@@ -16,6 +16,7 @@ defmodule Mariaex.Protocol do
   @timeout 5000
   @cache_size 100
   @max_rows 500
+  @json_library Poison
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
@@ -433,17 +434,17 @@ defmodule Mariaex.Protocol do
   def handle_execute(%Query{name: @reserved_prefix <> _, reserved?: false} = query, _, s) do
     reserved_error(query, s)
   end
-  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
-    send_text_query(state, statement) |> text_query_recv(query)
+  def handle_execute(%Query{type: :text, statement: statement} = query, [], opts, state) do
+    send_text_query(state, statement) |> text_query_recv(query, opts)
   end
-  def handle_execute(%Query{type: :binary} = query, params, _, state) do
+  def handle_execute(%Query{type: :binary} = query, params, opts, state) do
     case execute_lookup(query, state) do
       {:execute, id, query} ->
-        execute(id, query, params, state)
+        execute(id, query, params, state, opts)
       {:prepare_execute, query} ->
-        prepare_execute(&prepare(query, &1), params, state)
+        prepare_execute(&prepare(query, &1), params, state, opts)
       {:close_prepare_execute, id, query} ->
-        prepare_execute(&close_prepare(id, query, &1), params, state)
+        prepare_execute(&close_prepare(id, query, &1), params, state, opts)
     end
   end
   def handle_execute(query, params, _opts, state) do
@@ -476,16 +477,17 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp execute(id, query, params, state) do
+  defp execute(id, query, params, state, opts) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_no_cursor, iteration_count: 1), state, 0)
-    binary_query_recv(state, query)
+
+    binary_query_recv(state, query, opts)
   end
 
-  defp prepare_execute(prepare, params, state) do
+  defp prepare_execute(prepare, params, state, opts) do
     case prepare.(state) do
       {:ok, query, state} ->
         id = prepare_execute_lookup(query, state)
-        execute(id, query, params, state)
+        execute(id, query, params, state, opts)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -498,8 +500,8 @@ defmodule Mariaex.Protocol do
     Cache.id(cache, name)
   end
 
-  defp text_query_recv(state, query) do
-    case text_query_recv(state) do
+  defp text_query_recv(state, query, opts) do
+    case text_query_recv(state, opts) do
       {:resultset, columns, rows, _flags, state} ->
         {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
       {:ok, packet(msg: ok_resp()) = packet, state} ->
@@ -511,18 +513,18 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_query_recv(state) do
+  defp text_query_recv(state, opts) do
     state = %{state | state: :column_count}
     with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
          {:eof, columns, _, state} <- columns_recv(state, num_cols),
-         {:eof, rows, flags, state} <- text_rows_recv(state, columns) do
+         {:eof, rows, flags, state} <- text_rows_recv(state, columns, opts) do
       {:resultset, columns, rows, flags, state}
     end
   end
 
-  defp text_rows_recv(%{buffer: buffer} = state, columns) do
+  defp text_rows_recv(%{buffer: buffer} = state, columns, opts) do
     fields = Mariaex.RowParser.decode_text_init(columns)
-    case text_row_decode(%{state | buffer: :text_rows}, fields, [], buffer) do
+    case text_row_decode(%{state | buffer: :text_rows}, fields, [], buffer, opts) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), rows, state} ->
         {:eof, rows, flags, state}
       {:ok, packet, _, state} ->
@@ -532,22 +534,24 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_row_decode(s, fields, rows, buffer) do
-    case decode_text_rows(buffer, fields, rows) do
+  defp text_row_decode(s, fields, rows, buffer, opts) do
+    json_library = Keyword.get(opts, :json_library, @json_library)
+
+    case decode_text_rows(buffer, fields, rows, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
-        text_row_recv(s, fields, rows, rest)
+        text_row_recv(s, fields, rows, rest, opts)
     end
   end
 
-  defp text_row_recv(s, fields, rows, buffer) do
+  defp text_row_recv(s, fields, rows, buffer, opts) do
     %{sock: {sock_mod, sock}, timeout: timeout} = s
     case sock_mod.recv(sock, 0, timeout) do
       {:ok, data} when buffer == "" ->
-        text_row_decode(s, fields, rows, data)
+        text_row_decode(s, fields, rows, data, opts)
       {:ok, data} ->
-        text_row_decode(s, fields, rows, buffer <> data)
+        text_row_decode(s, fields, rows, buffer <> data, opts)
       {:error, _} = error ->
         error
     end
@@ -557,8 +561,8 @@ defmodule Mariaex.Protocol do
     abort_statement(state, query, code, message)
   end
 
-  defp binary_query_recv(state, query) do
-    case binary_query_recv(state) do
+  defp binary_query_recv(state, query, opts) do
+    case binary_query_recv(state, opts) do
       {:resultset, columns, bin_rows, flags, state} ->
         binary_query_resultset(state, query, columns, bin_rows, flags)
       {:ok, packet(msg: ok_resp()) = packet, state} ->
@@ -570,11 +574,11 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_query_recv(state) do
+  defp binary_query_recv(state, opts) do
     state = %{state | state: :column_count}
     with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
          {:eof, columns, _, state} <- columns_recv(state, num_cols),
-         {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
+         {:eof, rows, flags, state} <- bin_rows_recv(state, columns, opts) do
       {:resultset, columns, rows, flags, state}
     end
   end
@@ -604,9 +608,9 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp bin_rows_recv(%{buffer: buffer} = state, columns) do
+  defp bin_rows_recv(%{buffer: buffer} = state, columns, opts) do
     {fields, nullbin_size} = Mariaex.RowParser.decode_init(columns)
-    case binary_row_decode(%{state | buffer: :bin_rows}, fields, nullbin_size, [], buffer) do
+    case binary_row_decode(%{state | buffer: :bin_rows}, fields, nullbin_size, [], buffer, opts) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), rows, state} ->
         {:eof, rows, flags, state}
       {:ok, packet, _, state} ->
@@ -637,22 +641,24 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_row_decode(s, fields, nullbin_size, rows, buffer) do
-    case decode_bin_rows(buffer, fields, nullbin_size, rows) do
+  defp binary_row_decode(s, fields, nullbin_size, rows, buffer, opts) do
+    json_library = Keyword.get(opts, :json_library, @json_library)
+
+    case decode_bin_rows(buffer, fields, nullbin_size, rows, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
-        binary_row_recv(s, fields, nullbin_size, rows, rest)
+        binary_row_recv(s, fields, nullbin_size, rows, rest, opts)
     end
   end
 
-  defp binary_row_recv(s, fields, nullbin_size, rows, buffer) do
+  defp binary_row_recv(s, fields, nullbin_size, rows, buffer, opts) do
     %{sock: {sock_mod, sock}, timeout: timeout} = s
     case sock_mod.recv(sock, 0, timeout) do
       {:ok, data} when buffer == "" ->
-        binary_row_decode(s, fields, nullbin_size, rows, data)
+        binary_row_decode(s, fields, nullbin_size, rows, data, opts)
       {:ok, data} ->
-        binary_row_decode(s, fields, nullbin_size, rows, buffer <> data)
+        binary_row_decode(s, fields, nullbin_size, rows, buffer <> data, opts)
       {:error, _} = error ->
         error
     end
@@ -769,13 +775,13 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  def handle_first(query, %Cursor{statement_id: id, ref: ref, params: params}, _, state) do
+  def handle_first(query, %Cursor{statement_id: id, ref: ref, params: params}, opts, state) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_read_only, iteration_count: 1), state, 0)
-    binary_first_recv(state, ref, query)
+    binary_first_recv(state, ref, query, opts)
   end
 
-  defp binary_first_recv(state, ref, query) do
-    case binary_first_recv(state) do
+  defp binary_first_recv(state, ref, query, opts) do
+    case binary_first_recv(state, opts) do
       {:eof, columns, flags, state} ->
         binary_first_resultset(state, query, ref, columns, [], flags)
       {:resultset, columns, rows, flags, state} ->
@@ -790,11 +796,11 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_first_recv(state) do
+  defp binary_first_recv(state, opts) do
     state = %{state | state: :column_count}
     with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
          {:eof, columns, flags, state} when (flags &&& @server_status_cursor_exists) == 0 <- columns_recv(state, num_cols),
-         {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
+         {:eof, rows, flags, state} <- bin_rows_recv(state, columns, opts) do
       {:resultset, columns, rows, flags, state}
     end
   end
@@ -821,14 +827,14 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  def handle_next(query, %Cursor{statement_id: id, ref: ref, max_rows: max_rows}, _, state) do
+  def handle_next(query, %Cursor{statement_id: id, ref: ref, max_rows: max_rows}, opts, state) do
     msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
-    binary_next_recv(state, ref, query)
+    binary_next_recv(state, ref, query, opts)
   end
 
-  defp binary_next_recv(%{cursors: cursors} = state, ref, query) do
+  defp binary_next_recv(%{cursors: cursors} = state, ref, query, opts) do
     columns = Map.fetch!(cursors, ref)
-    case bin_rows_recv(state, columns) do
+    case bin_rows_recv(state, columns, opts) do
       {:eof, rows, flags, state} ->
         binary_next_resultset(state, columns, rows, flags)
       {:ok, packet, state} ->

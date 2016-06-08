@@ -21,7 +21,8 @@ end
 
 mysql_port = System.get_env("MDBPORT") || 3306
 mysql_host = System.get_env("MDBHOST") || "localhost"
-mysql_connect = "-u root #{mysql_pass_switch} --host=#{mysql_host} --port=#{mysql_port} --protocol=tcp"
+mysql_protocol = System.get_env("MDBPROTOCOL") || "tcp"
+mysql_connect = "-u root #{mysql_pass_switch} --host=#{mysql_host} --port=#{mysql_port} --protocol=#{mysql_protocol}"
 
 sql = """
   CREATE TABLE test1 (id serial, title text);
@@ -30,13 +31,25 @@ sql = """
   DROP TABLE test1;
 """
 
-cmds = [
-  ~s(mysql #{mysql_connect} -e "GRANT ALL ON *.* TO 'mariaex_user'@'localhost' IDENTIFIED BY 'mariaex_pass';"),
-  ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
-  ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci'";),
-  ~s(mysql #{mysql_connect} mariaex_test -e "#{sql}"),
-  ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=tcp -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
-]
+cmds = if System.get_env("MYSQL_5_7") do
+  [
+    ~s(mysql #{mysql_connect} -e "DROP USER 'mariaex_user'@'localhost';"),
+    ~s(mysql #{mysql_connect} -e "CREATE USER 'mariaex_user'@'localhost' IDENTIFIED BY 'mariaex_pass';"),
+    ~s(mysql #{mysql_connect} -e "GRANT ALL PRIVILEGES ON *.* TO 'mariaex_user'@'localhost' WITH GRANT OPTION;"),
+    ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
+    ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci'";),
+    ~s(mysql #{mysql_connect} mariaex_test -e "#{sql}"),
+    ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=#{mysql_protocol} -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
+  ]
+else
+  [
+    ~s(mysql #{mysql_connect} -e "GRANT ALL ON *.* TO 'mariaex_user'@'localhost' IDENTIFIED BY 'mariaex_pass';"),
+    ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
+    ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci'";),
+    ~s(mysql #{mysql_connect} mariaex_test -e "#{sql}"),
+    ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=#{mysql_protocol} -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
+  ]
+end
 
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
