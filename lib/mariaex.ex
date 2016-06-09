@@ -69,9 +69,11 @@ defmodule Mariaex do
        backoff and to stop (see `:backoff`, default: `:jitter`)
     * `:transactions` - Set to `:strict` to error on unexpected transaction
       state, otherwise set to `naive` (default: `:naive`);
-    * `:pool` - The pool module to use, see `DBConnection`, it must be
-      included with all requests if not the default (default:
-      `DBConnection.Connection`);
+    * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
+      idle or `:passive` not to (default: `:passive`);
+    * `:pool` - The pool module to use, see `DBConnection` for pool dependent
+      options, this option must be included with all requests contacting the pool
+     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
 
   ## Function signatures
 
@@ -135,16 +137,14 @@ defmodule Mariaex do
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
   def query(conn, statement, params \\ [], opts \\ []) do
-    DBConnection.query(conn, %Query{statement: statement}, params, defaults(opts))
-    |> arg_error_raiser
-   #  GenServer.call(pid, message, timeout) do
-   #   {:ok, %Mariaex.Result{} = res} ->
-   #     case Keyword.get(opts, :decode, :auto) do
-   #       :auto   -> {:ok, decode(res)}
-   #       :manual -> {:ok, res}
-   #     end
-   #   error ->
-   #     error
+    case DBConnection.prepare_execute(conn, %Query{statement: statement}, params, defaults(opts)) do
+      {:ok, _, result} ->
+        {:ok, result}
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, _} = error ->
+        error
+    end
   end
 
   @doc """
@@ -152,7 +152,8 @@ defmodule Mariaex do
   there was an error. See `query/3`.
   """
   def query!(conn, statement, params \\ [], opts \\ []) do
-    DBConnection.query!(conn, %Query{statement: statement}, params, defaults(opts))
+    {_, result} = DBConnection.prepare_execute!(conn, %Query{statement: statement}, params, defaults(opts))
+    result
   end
 
   @doc """
