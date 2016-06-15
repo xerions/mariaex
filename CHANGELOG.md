@@ -1,3 +1,12 @@
+# 0.7.6
+
+* Enhancements
+  * normalize port, if it is given as string
+  * update to db_connection v1.0.0-rc
+
+* Bug fixes
+  * add missing crypto to dependencies
+
 # 0.7.5
 
 * Enhancements
