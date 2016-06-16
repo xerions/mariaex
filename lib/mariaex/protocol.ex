@@ -566,7 +566,8 @@ defmodule Mariaex.Protocol do
     case checkout(state) do
       {:ok, state} ->
         msg_send(text_cmd(command: com_ping, statement: ""), state, 0)
-        ping_recv(state, :ping)
+        {:ok, state} = ping_recv(state, :ping)
+        checkin(state)
       disconnect ->
         disconnect
     end
@@ -574,9 +575,6 @@ defmodule Mariaex.Protocol do
 
   defp ping_handle(packet(msg: ok_resp()), :ping, %{buffer: buffer} = state) when is_binary(buffer) do
     {:ok, state}
-  end
-  defp ping_handle(packet(msg: ok_resp()), :ping, state) do
-    activate(state, state.buffer)
   end
 
   defp send_text_query(s, statement) do
