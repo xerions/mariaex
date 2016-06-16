@@ -1,3 +1,8 @@
+# 0.7.7
+
+* Enhancements
+  * do not checkout or activate on ping if buffer is full
+
 # 0.7.6
 
 * Enhancements
