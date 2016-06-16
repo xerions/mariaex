@@ -195,7 +195,7 @@ defmodule Mariaex.Protocol do
   defp activate(%{sock: {mod, sock}} = s, buffer) do
     msg = mod.fake_message(sock, buffer)
     send(self(), msg)
-    {:ok, %{s | state: :running}}
+    {:ok, %{s | buffer: :active_once, state: :running}}
   end
 
   defp setopts(%{sock: {mod, sock}} = s, opts, buffer) do
@@ -554,9 +554,14 @@ defmodule Mariaex.Protocol do
   end
 
   def_handle :ping_recv, :ping_handle
+
   @doc """
   DBConnection callback
   """
+  def ping(%{buffer: buffer} = state) when is_binary(buffer) do
+    msg_send(text_cmd(command: com_ping, statement: ""), state, 0)
+    ping_recv(state, :ping)
+  end
   def ping(state) do
     case checkout(state) do
       {:ok, state} ->
@@ -567,6 +572,9 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  defp ping_handle(packet(msg: ok_resp()), :ping, %{buffer: buffer} = state) when is_binary(buffer) do
+    {:ok, state}
+  end
   defp ping_handle(packet(msg: ok_resp()), :ping, state) do
     activate(state, state.buffer)
   end
