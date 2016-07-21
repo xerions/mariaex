@@ -105,6 +105,13 @@ defmodule Mariaex.Messages do
     database :string
   end
 
+  defcoder :ssl_connection_request do
+    capability_flags 4
+    max_size 4
+    character_set 1
+    _ 23
+  end
+
   defcoder :old_password do
     password :string
   end
