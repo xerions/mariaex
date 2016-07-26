@@ -181,7 +181,6 @@ defmodule Mariaex.Protocol do
 
   defp upgrade_to_ssl(%{sock: {_sock_mod, sock}} = s, %{opts: opts}) do
     ssl_opts = opts[:ssl_opts]
-    |> Keyword.put_new(:ciphers, :ssl.cipher_suites(:all))
     case :ssl.connect(sock, ssl_opts, opts[:timeout]) do
       {:ok, ssl_sock} ->
         # switch to the ssl connection module

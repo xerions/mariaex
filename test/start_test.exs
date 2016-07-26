@@ -21,9 +21,9 @@ defmodule StartTest do
                      database: "mariaex_test",
                      sync_connect: true,
                      ssl: true,
-                 ssl_opts: [cacertfile: "",
-                            verify: :verify_peer,
-                            versions: [:"tlsv1.2"]],
+                     ssl_opts: [cacertfile: "",
+                                verify: :verify_peer,
+                                versions: [:"tlsv1.2"]],
                      backoff_type: :stop]
 
     Process.flag :trap_exit, true
