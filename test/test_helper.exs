@@ -1,3 +1,4 @@
+ExUnit.configure exclude: [:ssl_tests]
 ExUnit.start()
 
 run_cmd = fn cmd ->

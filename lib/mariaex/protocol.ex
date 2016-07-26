@@ -130,12 +130,17 @@ defmodule Mariaex.Protocol do
 
   # request to communicate over an SSL connection
   defp handle_handshake(packet(seqnum: seqnum) = packet, opts, %{ssl_conn_state: :ssl_handshake} = s) do
-    # Create and send an SSL request packet per the spec: https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
+    # Create and send an SSL request packet per the spec:
+    # https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
     msg = ssl_connection_request(capability_flags: ssl_capabilities(opts), max_size: @maxpacketbytes, character_set: 8)
     msg_send(msg, s, new_seqnum = seqnum + 1)
-    {:ok, new_state} = upgrade_to_ssl(s, opts)
-    # move along to the actual handshake; now over SSL/TLS
-    handle_handshake(packet(packet, seqnum: new_seqnum), opts, new_state)
+    case upgrade_to_ssl(s, opts) do
+      {:ok, new_state} ->
+        # move along to the actual handshake; now over SSL/TLS
+        handle_handshake(packet(packet, seqnum: new_seqnum), opts, new_state)
+      {:error, error} ->
+        {:error, error}
+    end
   end
   defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
     ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
@@ -185,7 +190,7 @@ defmodule Mariaex.Protocol do
         # move ssl_conn_state to :connected
         {:ok, %{s | sock: {Mariaex.Connection.Ssl, ssl_sock}, ssl_conn_state: :connected}}
       {:error, reason} ->
-        {:error, %Mariaex.Error{message: "failed to upgraded socket: #{reason}"}}
+        {:error, %Mariaex.Error{message: "failed to upgraded socket: #{inspect reason}"}}
     end
   end
 
