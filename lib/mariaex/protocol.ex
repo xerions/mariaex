@@ -27,6 +27,7 @@ defmodule Mariaex.Protocol do
   @client_connect_with_db   0x00000008
   @client_local_files       0x00000080
   @client_protocol_41       0x00000200
+  @client_ssl               0x00000800
   @client_transactions      0x00002000
   @client_secure_connection 0x00008000
   @client_multi_statements  0x00010000
@@ -38,13 +39,26 @@ defmodule Mariaex.Protocol do
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
                 @client_deprecate_eof
 
-  defstruct [sock: nil, connection_ref: nil, state: nil, state_data: nil, protocol57: false,
-             rows: [], connection_id: nil, opts: [], catch_eof: false, buffer: "", timeout: 0,
-             lru_cache: nil, cache: nil, seqnum: 0]
+  defstruct sock: nil,
+            connection_ref: nil,
+            state: nil,
+            state_data: nil,
+            protocol57: false,
+            rows: [],
+            connection_id: nil,
+            opts: [],
+            catch_eof: false,
+            buffer: "",
+            timeout: 0,
+            lru_cache: nil,
+            cache: nil,
+            seqnum: 0,
+            ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
   @doc """
   DBConnection callback
   """
+
   def connect(opts) do
     opts         = default_opts(opts)
     sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
@@ -56,6 +70,7 @@ defmodule Mariaex.Protocol do
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
         s = %__MODULE__{state: :handshake,
+                        ssl_conn_state: set_initial_ssl_conn_state(opts),
                         connection_id: self,
                         connection_ref: make_ref,
                         sock: {sock_mod, sock},
@@ -69,6 +84,7 @@ defmodule Mariaex.Protocol do
     end
   end
 
+
   defp default_opts(opts) do
     opts
     |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
@@ -79,7 +95,19 @@ defmodule Mariaex.Protocol do
     |> Keyword.put_new(:sock_type, :tcp)
     |> Keyword.put_new(:socket_options, [])
     |> Keyword.update(:port, 3306, &normalize_port/1)
+    end
+
+  defp set_initial_ssl_conn_state(opts) do
+    if opts[:ssl] && has_ssl_opts?(opts[:ssl_opts]) do
+      :ssl_handshake
+    else
+      :not_used
+    end
   end
+
+  defp has_ssl_opts?(nil), do: false
+  defp has_ssl_opts?([]), do: false
+  defp has_ssl_opts?(ssl_opts) when is_list(ssl_opts), do: true
 
   defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
   defp normalize_port(port) when is_integer(port), do: port
@@ -100,10 +128,24 @@ defmodule Mariaex.Protocol do
   end
   defp connected(other), do: other
 
+  # request to communicate over an SSL connection
+  defp handle_handshake(packet(seqnum: seqnum) = packet, opts, %{ssl_conn_state: :ssl_handshake} = s) do
+    # Create and send an SSL request packet per the spec:
+    # https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
+    msg = ssl_connection_request(capability_flags: ssl_capabilities(opts), max_size: @maxpacketbytes, character_set: 8)
+    msg_send(msg, s, new_seqnum = seqnum + 1)
+    case upgrade_to_ssl(s, opts) do
+      {:ok, new_state} ->
+        # move along to the actual handshake; now over SSL/TLS
+        handle_handshake(packet(packet, seqnum: new_seqnum), opts, new_state)
+      {:error, error} ->
+        {:error, error}
+    end
+  end
   defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
     ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
     ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
-    ## In a phase of geting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
+    ## In a phase of getting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
     ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
     ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
     ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
@@ -122,7 +164,7 @@ defmodule Mariaex.Protocol do
     msg_send(msg, s, seqnum + 1)
     handshake_recv(%{s | state: :handshake_send, protocol57: protocol57}, nil)
   end
-  defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id)), nil, state) do
+  defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id) = _packet), nil, state) do
     statement = "SET CHARACTER SET " <> (state.opts[:charset] || "utf8")
     query = %Query{type: :text, statement: statement}
     case send_text_query(state, statement) |> text_query_recv(query) do
@@ -137,10 +179,30 @@ defmodule Mariaex.Protocol do
     {:error, error}
   end
 
+  defp upgrade_to_ssl(%{sock: {_sock_mod, sock}} = s, %{opts: opts}) do
+    ssl_opts = opts[:ssl_opts]
+    case :ssl.connect(sock, ssl_opts, opts[:timeout]) do
+      {:ok, ssl_sock} ->
+        # switch to the ssl connection module
+        # set the socket
+        # move ssl_conn_state to :connected
+        {:ok, %{s | sock: {Mariaex.Connection.Ssl, ssl_sock}, ssl_conn_state: :connected}}
+      {:error, reason} ->
+        {:error, %Mariaex.Error{message: "failed to upgraded socket: #{inspect reason}"}}
+    end
+  end
+
   defp capabilities(opts) do
     case opts[:skip_database] do
       true -> {"", @capabilities}
       _    -> {opts[:database], @capabilities ||| @client_connect_with_db}
+    end
+  end
+
+  defp ssl_capabilities(%{opts: opts}) do
+    case opts[:skip_database] do
+      true -> @capabilities ||| @client_ssl
+      _    -> @capabilities ||| @client_connect_with_db ||| @client_ssl
     end
   end
 
@@ -523,7 +585,6 @@ defmodule Mariaex.Protocol do
   end
 
   defp msg_send(msg, %{sock: {sock_mod, sock}}, seqnum), do: msg_send(msg, {sock_mod, sock}, seqnum)
-
   defp msg_send(msgs, {sock_mod, sock}, seqnum) when is_list(msgs) do
     binaries = Enum.reduce(msgs, [], &[&2 | encode(&1, seqnum)])
     sock_mod.send(sock, binaries)
