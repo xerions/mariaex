@@ -21,6 +21,12 @@ defmodule QueryTest do
     assert query("SELECT * FROM test_pass", []) == [[27, "foobar"]]
   end
 
+  test "non-row query with leading whitespace", context do
+    :ok = query("""
+      CREATE TABLE test_leading_whitespace (id int, text text)
+    """, [])
+  end
+
   test "connection without database" do
     opts = [username: "mariaex_user", password: "mariaex_pass", skip_database: true]
     {:ok, pid} = Mariaex.Connection.start_link(opts)

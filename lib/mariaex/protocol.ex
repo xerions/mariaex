@@ -675,7 +675,7 @@ defmodule Mariaex.Protocol do
   Get command from statement
   """
   def get_command(statement) when is_binary(statement) do
-    statement |> :binary.split([" ", "\n"]) |> hd |> String.downcase |> String.to_atom
+    Regex.run(~r"\w+", statement) |> hd |> String.downcase |> String.to_atom
   end
   def get_command(nil), do: nil
 
