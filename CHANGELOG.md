@@ -1,3 +1,9 @@
+# 0.7.8
+
+* Enhancements
+  * add tls support
+  * add option for switching, how strings are saved in database
+
 # 0.7.7
 
 * Enhancements
