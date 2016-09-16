@@ -14,6 +14,7 @@ defmodule Mariaex.Query do
 
   defstruct name: "",
             reserved?: false,
+            binary_as: nil,
             type: nil,
             statement: "",
             statement_id: nil,
@@ -57,9 +58,9 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def encode(%Mariaex.Query{types: nil} = query, _params, _opts) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
-  def encode(%Mariaex.Query{type: :binary, parameter_types: parameter_types} = query, params, _opts) do
+  def encode(%Mariaex.Query{type: :binary, parameter_types: parameter_types, binary_as: binary_as} = query, params, _opts) do
     if length(params) == length(parameter_types) do
-      parameter_types |> Enum.zip(params) |> parameters_to_binary()
+      parameter_types |> Enum.zip(params) |> parameters_to_binary(binary_as)
     else
       raise ArgumentError, "parameters must be of length #{length params} for query #{inspect query}"
     end
@@ -68,15 +69,15 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     params
   end
 
-  defp parameters_to_binary([]), do: <<>>
-  defp parameters_to_binary(params) do
+  defp parameters_to_binary([], binary_as), do: <<>>
+  defp parameters_to_binary(params, binary_as) do
     set = {<<>>, <<>>, <<>>}
-    {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc) end)
+    {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
     << null_map_to_mysql(nullbits, <<>>) :: binary, 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
-  defp encode_params({_, param}, {nullbits, typesbin, valuesbin}) do
-    {nullbit, type, value} = encode_param(param)
+  defp encode_params({_, param}, {nullbits, typesbin, valuesbin}, binary_as) do
+    {nullbit, type, value} = encode_param(param, binary_as)
 
     types_part = case type do
       :field_type_longlong ->
@@ -97,33 +98,33 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     }
   end
 
-  defp encode_param(nil),
+  defp encode_param(nil, _binary_as),
     do: {1, :field_type_null, ""}
-  defp encode_param(bin) when is_binary(bin),
-    do: {0, :field_type_var_string, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
-  defp encode_param(int) when is_integer(int),
+  defp encode_param(bin, binary_as) when is_binary(bin),
+    do: {0, binary_as, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  defp encode_param(int, _binary_as) when is_integer(int),
     do: {0, :field_type_longlong, << int :: 64-little >>}
-  defp encode_param(float) when is_float(float),
+  defp encode_param(float, _binary_as) when is_float(float),
     do: {0, :field_type_double, << float :: 64-little-float >>}
-  defp encode_param(true),
+  defp encode_param(true, _binary_as),
     do: {0, :field_type_tiny, << 01 >>}
-  defp encode_param(false),
+  defp encode_param(false, _binary_as),
     do: {0, :field_type_tiny, << 00 >>}
-  defp encode_param(%Decimal{} = value) do
+  defp encode_param(%Decimal{} = value, _binary_as) do
     bin = Decimal.to_string(value, :normal)
     {0, :field_type_newdecimal, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
   end
-  defp encode_param({year, month, day}),
+  defp encode_param({year, month, day}, _binary_as),
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
-  defp encode_param({hour, min, sec, 0}),
+  defp encode_param({hour, min, sec, 0}, _binary_as),
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
-  defp encode_param({hour, min, sec, msec}),
+  defp encode_param({hour, min, sec, msec}, _binary_as),
     do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, 0}}),
+  defp encode_param({{year, month, day}, {hour, min, sec, 0}}, _binary_as),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
-  defp encode_param({{year, month, day}, {hour, min, sec, msec}}),
+  defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
-  defp encode_param(other),
+  defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 
   defp null_map_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do

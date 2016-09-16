@@ -120,6 +120,8 @@ defmodule Mariaex do
     * `:include_table_name` - Boolean specifying whether the `columns` list in
        the result prepends the table name to the column name with a period.
        (default `false`)
+    * `:binary_as` - encoding binary as `:field_type_var_string` (default)
+       or `:field_type_blob`
 
   ## Examples
 

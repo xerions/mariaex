@@ -44,6 +44,7 @@ defmodule Mariaex.Protocol do
             state: nil,
             state_data: nil,
             protocol57: false,
+            binary_as: nil,
             rows: [],
             connection_id: nil,
             opts: [],
@@ -66,10 +67,12 @@ defmodule Mariaex.Protocol do
     host         = opts[:hostname]
     host         = if is_binary(host), do: String.to_char_list(host), else: host
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
+    binary_as    = opts[:binary_as] || :field_type_var_string
 
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
-        s = %__MODULE__{state: :handshake,
+        s = %__MODULE__{binary_as: binary_as,
+                        state: :handshake,
                         ssl_conn_state: set_initial_ssl_conn_state(opts),
                         connection_id: self,
                         connection_ref: make_ref,
@@ -277,7 +280,7 @@ defmodule Mariaex.Protocol do
   end
   def handle_prepare(%Query{type: nil, statement: statement} = query, opts, s) do
     command = get_command(statement)
-    handle_prepare(%{query | type: request_type(command)}, opts, s)
+    handle_prepare(%{query | type: request_type(command), binary_as: s.binary_as}, opts, s)
   end
   def handle_prepare(%Query{type: :text} = query, _, s) do
     {:ok, query, s}
@@ -285,10 +288,10 @@ defmodule Mariaex.Protocol do
   def handle_prepare(%Query{type: :binary, statement: statement} = query, _, %{connection_ref: ref} = s) do
     case cache_lookup(query, s) do
       {id, types, parameter_types} ->
-        {:ok, %{query | statement_id: id, types: types, parameter_types: parameter_types, connection_ref: ref}, s}
+        {:ok, %{query | binary_as: s.binary_as, statement_id: id, types: types, parameter_types: parameter_types, connection_ref: ref}, s}
       nil ->
         msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-        prepare_recv(%{s | state: :prepare_send}, query)
+        prepare_recv(%{s | binary_as: s.binary_as, state: :prepare_send}, query)
     end
   end
 

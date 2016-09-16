@@ -31,3 +31,8 @@ After you are done, run `mix deps.get` in your shell to fetch and compile Mariae
    %Mariaex.Result{columns: ["id", "title"], command: :select, num_rows: 2,
     rows: [{1, "test"}, {2, "test2"}]}}
 ```
+
+## Configuration
+
+Important configuration, which depends on used charset for support unicode chars, see `:binary_as`
+in `Mariaex.start_link/1`
