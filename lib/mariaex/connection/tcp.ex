@@ -24,9 +24,9 @@ defmodule Mariaex.Connection.Tcp do
       {:tcp, ^sock, buffer} ->
         {:ok, buffer}
       {:tcp_closed, ^sock} ->
-        {:disconnect, {tag, "async_recv", :closed, buffer}}
+        {:disconnect, {tag(), "async_recv", :closed, buffer}}
       {:tcp_error, ^sock, reason} ->
-        {:disconnect, {tag, "async_recv", reason, buffer}}
+        {:disconnect, {tag(), "async_recv", reason, buffer}}
     after
       timeout ->
         {:ok, <<>>}

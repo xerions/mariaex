@@ -7,9 +7,9 @@ defmodule Mariaex.Connection.Ssl do
       {:ssl, ^sock, buffer} ->
         {:ok, buffer}
       {:ssl_closed, ^sock} ->
-        {:disconnect, {tag, "async_recv", :closed, buffer}}
+        {:disconnect, {tag(), "async_recv", :closed, buffer}}
       {:ssl_error, ^sock, reason} ->
-        {:disconnect, {tag, "async_recv", reason, buffer}}
+        {:disconnect, {tag(), "async_recv", reason, buffer}}
     after
       timeout ->
         {:ok, <<>>}

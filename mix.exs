@@ -5,12 +5,12 @@ defmodule Mariaex.Mixfile do
     [app: :mariaex,
      version: "0.7.8",
      elixir: "~> 1.0",
-     deps: deps,
+     deps: deps(),
      name: "Mariaex",
      source_url: "https://github.com/liveforeverx/mariaex",
      test_coverage: [tool: Coverex.Task, coveralls: true],
-     description: description,
-     package: package]
+     description: description(),
+     package: package()]
   end
 
   # Configuration for the OTP application

@@ -27,11 +27,11 @@ defmodule Mariaex.LruCache do
 
   def insert({size, cache}, statement, data, cleanup) do
     if :ets.info(cache, :size) > size, do: remove_oldest(cache, cleanup)
-    :ets.insert(cache, {statement, timestamp, data})
+    :ets.insert(cache, {statement, timestamp(), data})
   end
 
   def update({_, cache}, statement, data) do
-    :ets.insert(cache, {statement, timestamp, data})
+    :ets.insert(cache, {statement, timestamp(), data})
   end
 
   defp remove_oldest(cache, cleanup) do
