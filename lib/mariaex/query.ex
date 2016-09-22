@@ -147,7 +147,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
-  def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
+  def decode(_, {%{rows: []} = res, _}, _), do: res
+  def decode(%Mariaex.Query{statement: statement, type: query_type} = query, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
     if command in @commands_without_rows do
       %Mariaex.Result{res | command: command, rows: nil}
@@ -155,7 +156,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       mapper = opts[:decode_mapper] || fn x -> x end
       %Mariaex.Result{rows: rows} = res
       types = Enum.reverse(types)
-      decoded = do_decode(rows, types, mapper)
+      decoded = do_decode(rows, types, query_type, mapper)
       include_table_name = opts[:include_table_name]
       columns = for %Column{} = column <- types, do: column_name(column, include_table_name)
       %Mariaex.Result{res | command: command,
@@ -170,9 +171,24 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp column_name(%Column{name: name, table: table}, true), do: "#{table}.#{name}"
   defp column_name(%Column{name: name}, _), do: name
 
-  def do_decode(_, types, mapper \\ fn x -> x end)
-  def do_decode(rows, types, mapper) do
-    rows |> Enum.reduce([], &([(decode_bin_rows(&1, types) |> mapper.()) | &2]))
+  def do_decode(rows, types, query_type, mapper \\ fn x -> x end) do
+    decode_func = case query_type do
+                    :binary -> &([(decode_bin_rows(&1, types) |> mapper.()) | &2])
+                    :text -> &([(decode_text_rows(&1, types) |> mapper.()) | &2])
+                  end
+    rows |> Enum.reduce([], decode_func)
+  end
+
+  def decode_text_rows(unparsed, fields) do
+    decode_text_rows(unparsed, [], fields)
+  end
+  def decode_text_rows(<<>>, row, _) do
+    Enum.reverse(row)
+  end
+  def decode_text_rows(unparsed, row, [this_type | next_types] = types) do
+    {raw, next} = Mariaex.Coder.Utils.length_encoded_string(unparsed)
+    value = handle_decode_text_rows(Messages.__type__(:type, this_type.type), raw)
+    decode_text_rows(next, [value | row], next_types)
   end
 
   def decode_bin_rows(packet, fields) do
@@ -190,6 +206,36 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [%Column{type: type, flags: flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
     {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
+  end
+
+  defp handle_decode_text_rows({:string, _mysql_type}, binary), do: binary
+  defp handle_decode_text_rows({:integer, _}, binary) do
+    {int, ""} = Integer.parse(binary)
+    int
+  end
+  defp handle_decode_text_rows({:float, _}, binary) do
+    {float, ""} = Float.parse(binary)
+    float
+  end
+  defp handle_decode_text_rows({:decimal, :field_type_newdecimal}, binary) do
+    handle_decode_text_rows({:float, :field_type_newdecimal}, binary)
+  end
+  defp handle_decode_text_rows({:bit, _}, binary), do: binary
+  defp handle_decode_text_rows({:time, :field_type_time}, binary) do
+    {:ok, time} = Time.from_iso8601(binary)
+    {microsecond, precision} = time.microsecond
+    {time.hour, time.minute, time.second, microsecond}
+  end
+  defp handle_decode_text_rows({:date, :field_type_date}, binary) do
+    {:ok, date} = Date.from_iso8601(binary)
+    {date.year, date.month, date.day}
+  end
+  defp handle_decode_text_rows({:timestamp, _}, binary) do
+    [date_iso, time_iso] = String.split(binary, ["T", " "])
+    {:ok, date} = Date.from_iso8601(date_iso)
+    {:ok, time} = Time.from_iso8601(time_iso)
+    {microsecond, precision} = time.microsecond
+    {{date.year, date.month, date.day}, {time.hour, time.minute, time.second, microsecond}}
   end
 
   defp handle_decode_bin_rows({:string, _mysql_type}, packet, _),              do: length_encoded_string(packet)
