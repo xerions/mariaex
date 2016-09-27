@@ -74,8 +74,8 @@ defmodule Mariaex.Protocol do
         s = %__MODULE__{binary_as: binary_as,
                         state: :handshake,
                         ssl_conn_state: set_initial_ssl_conn_state(opts),
-                        connection_id: self,
-                        connection_ref: make_ref,
+                        connection_id: self(),
+                        connection_ref: make_ref(),
                         sock: {sock_mod, sock},
                         cache: Cache.new(),
                         lru_cache: LruCache.new(opts[:cache_size]),
@@ -213,7 +213,7 @@ defmodule Mariaex.Protocol do
   DBConnection callback
   """
   def disconnect(_, state = %{sock: {sock_mod, sock}}) do
-    msg_send(text_cmd(command: com_quit, statement: ""), state, 0)
+    msg_send(text_cmd(command: com_quit(), statement: ""), state, 0)
     case msg_recv(state) do
       {:ok, packet(msg: ok_resp())} ->
         sock_mod.close(sock)
@@ -290,7 +290,7 @@ defmodule Mariaex.Protocol do
       {id, types, parameter_types} ->
         {:ok, %{query | binary_as: s.binary_as, statement_id: id, types: types, parameter_types: parameter_types, connection_ref: ref}, s}
       nil ->
-        msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
+        msg_send(text_cmd(command: com_stmt_prepare(), statement: statement), s, 0)
         prepare_recv(%{s | binary_as: s.binary_as, state: :prepare_send}, query)
     end
   end
@@ -375,7 +375,7 @@ defmodule Mariaex.Protocol do
     send_text_query(state, statement) |> text_query_recv(query)
   end
   def handle_execute(%Query{type: :binary, statement_id: id, connection_ref: ref} = query, params, _opts, %{connection_ref: ref} = state) do
-    msg_send(stmt_execute(command: com_stmt_execute, parameters: params, statement_id: id, flags: 0, iteration_count: 1), state, 0)
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: 0, iteration_count: 1), state, 0)
     binary_query_recv(%{state | state: :column_count}, query)
   end
   def handle_execute(%Query{type: :binary} = query, params, opts, state) do
@@ -623,13 +623,13 @@ defmodule Mariaex.Protocol do
   DBConnection callback
   """
   def ping(%{buffer: buffer} = state) when is_binary(buffer) do
-    msg_send(text_cmd(command: com_ping, statement: ""), state, 0)
+    msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
     ping_recv(state, :ping)
   end
   def ping(state) do
     case checkout(state) do
       {:ok, state} ->
-        msg_send(text_cmd(command: com_ping, statement: ""), state, 0)
+        msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
         {:ok, state} = ping_recv(state, :ping)
         checkin(state)
       disconnect ->
@@ -642,7 +642,7 @@ defmodule Mariaex.Protocol do
   end
 
   defp send_text_query(s, statement) do
-    msg_send(text_cmd(command: com_query, statement: statement), s, 0)
+    msg_send(text_cmd(command: com_query(), statement: statement), s, 0)
     %{s | state: :column_count}
   end
 
@@ -658,7 +658,7 @@ defmodule Mariaex.Protocol do
   end
 
   def close_statement(_statement, {id, _, _}, sock) do
-    msg_send(stmt_close(command: com_stmt_close, statement_id: id), sock, 0)
+    msg_send(stmt_close(command: com_stmt_close(), statement_id: id), sock, 0)
   end
 
   def close_statement(s = %{sock: sock, lru_cache: cache}, %{statement: statement}) do
