@@ -391,9 +391,7 @@ defmodule Mariaex.Protocol do
   end
 
   def_handle :text_query_recv, :handle_text_query
-  defp handle_text_query(packet(msg: ok_resp()) = packet, query, state) do
-    handle_ok_packet(packet, query, state)
-  end
+  defp handle_text_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
   defp handle_text_query(packet(msg: column_count(column_count: count)), query, state) do
     text_query_recv(%{state | state: :column_definitions, state_data: {count, 0}}, %{query | types: []})
   end
@@ -403,19 +401,17 @@ defmodule Mariaex.Protocol do
     s = if s.state_data == {0, 0}, do: %{s | catch_eof: true}, else: s
     text_query_recv(s, query)
   end
-  defp handle_text_query(packet(msg: eof_resp()), %{statement: statement} = query, s = %{catch_eof: catch_eof}) do
+  defp handle_text_query(packet(msg: eof_resp()), query, s = %{catch_eof: catch_eof}) do
     if catch_eof do
       text_query_recv(%{s | state: :text_rows}, query)
     else
       {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
   end
-  defp handle_text_query(packet(msg: text_row(row: row)) = packet, query, s = %{rows: acc}) do
+  defp handle_text_query(packet(msg: text_row(row: row)), query, s = %{rows: acc}) do
     text_query_recv(%{s | rows: [row | acc], catch_eof: false}, query)
   end
-  defp handle_text_query(packet, query, state) do
-    handle_error(packet, query, state)
-  end
+  defp handle_text_query(packet, query, s), do: handle_error(packet, query, s)
 
   defp handle_error(packet(msg: error_resp(error_code: code, error_message: message)), query, state) do
     abort_statement(state, query, code, message)

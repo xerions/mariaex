@@ -36,7 +36,7 @@ cmds = [
 
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
-  IO.puts "--> #{output}"
+  IO.puts ""
 
   if status != 0 do
     IO.puts """
@@ -97,4 +97,5 @@ defmodule Mariaex.TestHelper do
   def length_encode_row(row) do
     Enum.map_join(row, &(<<String.length(&1)>> <> &1))
   end
+
 end
