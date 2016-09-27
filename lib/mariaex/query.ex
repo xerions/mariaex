@@ -69,7 +69,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     params
   end
 
-  defp parameters_to_binary([], binary_as), do: <<>>
+  defp parameters_to_binary([], _binary_as), do: <<>>
   defp parameters_to_binary(params, binary_as) do
     set = {<<>>, <<>>, <<>>}
     {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
