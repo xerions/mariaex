@@ -191,7 +191,7 @@ defmodule Mariaex.Coder do
                             << contents :: size(length_nul_terminated)-binary, 0 :: 8 >> -> contents
                             contents -> contents
                           end
-      {String.trim(auth_plugin_data2, <<0>>), next}
+      {String.strip(auth_plugin_data2, 0), next}
     end
 
     def length_encoded_string_eof(bin, acc \\ []) do
