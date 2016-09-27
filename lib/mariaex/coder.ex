@@ -101,6 +101,10 @@ defmodule Mariaex.Coder do
     end
   end
 
+  defp gen_body({key, _, [:auth_plugin_data2]}, _) do
+    quote do: {unquote(Macro.var(key, nil)), next} = auth_plugin_data2(next)
+  end
+
   defp gen_body({key, _, [:length_encoded_integer]}, _) do
     quote do: {unquote(Macro.var(key, nil)), next} = length_encoded_integer(next)
   end
@@ -165,6 +169,9 @@ defmodule Mariaex.Coder do
   defp match({key, _, [:length_encoded_integer]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: integer)]
   end
+  defp match({key, _, [:auth_plugin_data2]}, :encode) do
+    [(quote do: unquote(Macro.var(key, nil)) :: binary)]
+  end
   defp match({key, _, [:length_encoded_string | _]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: binary)]
   end
@@ -174,6 +181,17 @@ defmodule Mariaex.Coder do
       {length, next} = length_encoded_integer(bin)
       << string :: size(length)-binary, next :: binary >> = next
       {string, next}
+    end
+
+    def auth_plugin_data2(<< length_auth_plugin_data :: 8, _ :: 80, next :: binary >>) do
+      length = max(13, length_auth_plugin_data - 8)
+      length_nul_terminated = length - 1
+      << null_terminated? :: size(length)-binary, next :: binary >> = next
+      auth_plugin_data2 = case null_terminated? do
+                            << contents :: size(length_nul_terminated)-binary, 0 :: 8 >> -> contents
+                            contents -> contents
+                          end
+      {String.trim(auth_plugin_data2, <<0>>), next}
     end
 
     def length_encoded_string_eof(bin, acc \\ []) do
