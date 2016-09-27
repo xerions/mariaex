@@ -13,10 +13,10 @@ defmodule PreparedQueryTest do
     assert with_prepare!("test", "SELECT * FROM prepared_test", []) == []
   end
 
-  # test "unprepared query should work", context do
-  #   :ok = query("CREATE TABLE unprepared_test (id int, text text)", [])
-  #   conn = context[:pid]
-  #   query = %Mariaex.Query{type: :binary, name: "unprepared_test", statement: "SELECT * FROM unprepared_test"}
-  #   assert %{rows: []} = Mariaex.execute!(conn, query, [])
-  # end
+  test "unprepared query should work", context do
+    :ok = query("CREATE TABLE unprepared_test (id int, text text)", [])
+    conn = context[:pid]
+    query = %Mariaex.Query{type: :binary, name: "unprepared_test", statement: "SELECT * FROM unprepared_test"}
+    assert %{rows: []} = Mariaex.execute!(conn, query, [])
+  end
 end

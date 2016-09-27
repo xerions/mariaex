@@ -36,7 +36,7 @@ cmds = [
 
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
-  IO.puts ""
+  IO.puts "--> #{output}"
 
   if status != 0 do
     IO.puts """

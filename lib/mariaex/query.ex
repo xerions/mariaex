@@ -172,10 +172,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   def do_decode(rows, types, query_type, mapper \\ fn x -> x end) do
     decode_func = case query_type do
-                    :binary -> &([(decode_bin_rows(&1, types) |> mapper.()) | &2])
-                    :text -> &([(decode_text_rows(&1, types) |> mapper.()) | &2])
+                    :binary -> &decode_bin_rows/2
+                    :text -> &decode_text_rows/2
                   end
-    rows |> Enum.reduce([], decode_func)
+    rows |> Enum.reduce([], &([(decode_func.(&1, types) |> mapper.()) | &2]))
   end
 
   def decode_text_rows(unparsed, fields) do
@@ -221,21 +221,35 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   end
   defp handle_decode_text_rows({:bit, _}, binary), do: binary
   defp handle_decode_text_rows({:time, :field_type_time}, binary) do
-    {:ok, time} = Time.from_iso8601(binary)
-    {microsecond, precision} = time.microsecond
-    {time.hour, time.minute, time.second, microsecond}
+    {:ok, time} = time_from_iso8601(binary)
+    time
   end
   defp handle_decode_text_rows({:date, :field_type_date}, binary) do
-    {:ok, date} = Date.from_iso8601(binary)
-    {date.year, date.month, date.day}
+    {:ok, date} = date_from_iso8601(binary)
+    date
   end
   defp handle_decode_text_rows({:timestamp, _}, binary) do
     [date_iso, time_iso] = String.split(binary, ["T", " "])
-    {:ok, date} = Date.from_iso8601(date_iso)
-    {:ok, time} = Time.from_iso8601(time_iso)
-    {microsecond, precision} = time.microsecond
-    {{date.year, date.month, date.day}, {time.hour, time.minute, time.second, microsecond}}
+    {:ok, date} = date_from_iso8601(date_iso)
+    {:ok, time} = time_from_iso8601(time_iso)
+    {date, time}
   end
+
+  def date_from_iso8601(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>) do
+    {year, ""} = Integer.parse(year)
+    {month, ""} = Integer.parse(month)
+    {day, ""} = Integer.parse(day)
+    {:ok, {year, month, day}}
+  end
+
+  def time_from_iso8601(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>) do
+    {hour, ""} = Integer.parse(hour)
+    {min, ""} = Integer.parse(min)
+    {sec, ""} = Integer.parse(sec)
+    {:ok, {hour, min, sec, 0}}
+  end
+
+
 
   defp handle_decode_bin_rows({:string, _mysql_type}, packet, _),              do: length_encoded_string(packet)
   defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet, flags),        do: parse_int_packet(packet, 8, flags)
