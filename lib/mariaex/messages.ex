@@ -89,9 +89,8 @@ defmodule Mariaex.Messages do
     character_set 1
     status_flags 2
     capability_flags_2 2
-    length_auth_plugin_data 1
-    _ 10
-    auth_plugin_data2 :string #max(13, length_auth_plugin_data - 8), :string
+    # length_auth_plugin_data and the following ten bytes in the spec are rolled into the following field
+    auth_plugin_data2 :auth_plugin_data2  #max(13, length_auth_plugin_data - 8), :string
     plugin :string_eof
   end
 
