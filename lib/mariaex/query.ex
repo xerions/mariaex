@@ -142,7 +142,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback,
-                          :savepoint, :execute, :prepare]
+                          :savepoint, :execute, :prepare, :truncate]
 
   @unsigned_flag 0x20
 
