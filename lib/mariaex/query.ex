@@ -170,12 +170,17 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp column_name(%Column{name: name, table: table}, true), do: "#{table}.#{name}"
   defp column_name(%Column{name: name}, _), do: name
 
-  def do_decode(_, types, mapper \\ fn x -> x end)
-  def do_decode(rows, types, mapper) do
-    rows |> Enum.reduce([], &([(decode_bin_rows(&1, types) |> mapper.()) | &2]))
+  def do_decode(_, columns, mapper \\ fn x -> x end)
+  def do_decode(rows, columns, mapper) do
+    row_types = columns
+    |> Enum.map(&Messages.__type__(:type, &1.type))
+    |> Enum.zip(columns)
+
+    rows |> Enum.reduce([], &([(decode_bin_rows(&1, row_types) |> mapper.()) | &2]))
   end
 
   def decode_bin_rows(packet, fields) do
+    # TODO: build a static list of decoders and pass that.
     nullbin_size = div(length(fields) + 7 + 2, 8)
     << 0 :: 8, nullbin :: size(nullbin_size)-binary, rest :: binary >> = packet
     nullbin = null_map_from_mysql(nullbin)
@@ -187,8 +192,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [%Column{type: type, flags: flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
-    {value, next} = handle_decode_bin_rows(Messages.__type__(:type, type), packet, flags)
+  def decode_bin_rows(packet, [{row_type, %Column{flags: flags}} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+    {value, next} = handle_decode_bin_rows(row_type, packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end
 
