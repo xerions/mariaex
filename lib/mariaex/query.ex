@@ -173,10 +173,21 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def do_decode(_, columns, mapper \\ fn x -> x end)
   def do_decode(rows, columns, mapper) do
     row_types = columns
-    |> Enum.map(&Messages.__type__(:type, &1.type))
-    |> Enum.zip(columns)
+    |> Enum.map(fn(column) ->
+      column_type = Messages.__type__(:type, column.type)
+      |> type_to_atom
 
-    rows |> Enum.reduce([], &([(decode_bin_rows(&1, row_types) |> mapper.()) | &2]))
+      {column_type, column.flags}
+    end)
+
+    rows
+    |> Enum.reduce([], fn(row, acc) ->
+      decoded_row = row
+      |> decode_bin_rows(row_types)
+      |> mapper.()
+
+      [decoded_row | acc]
+    end)
   end
 
   def decode_bin_rows(packet, fields) do
@@ -192,26 +203,43 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
     decode_bin_rows(packet, fields, nullrest, [nil | acc])
   end
-  def decode_bin_rows(packet, [{row_type, %Column{flags: flags}} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+  def decode_bin_rows(packet, [{row_type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
     {value, next} = handle_decode_bin_rows(row_type, packet, flags)
     decode_bin_rows(next, fields, nullrest, [value | acc])
   end
 
-  defp handle_decode_bin_rows({:string, _mysql_type}, packet, _),              do: length_encoded_string(packet)
-  defp handle_decode_bin_rows({:integer, :field_type_tiny}, packet, flags),        do: parse_int_packet(packet, 8, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_short}, packet, flags),       do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_int24}, packet, flags),       do: parse_int_packet(packet, 32, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_long}, packet, flags),        do: parse_int_packet(packet, 32, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_longlong}, packet, flags),    do: parse_int_packet(packet, 64, flags)
-  defp handle_decode_bin_rows({:integer, :field_type_year}, packet, flags),        do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows({:time, :field_type_time}, packet, _),           do: parse_time_packet(packet)
-  defp handle_decode_bin_rows({:date, :field_type_date}, packet, _),           do: parse_date_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_datetime}, packet, _),  do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:timestamp, :field_type_timestamp}, packet, _), do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows({:decimal, :field_type_newdecimal}, packet, _),  do: parse_decimal_packet(packet)
-  defp handle_decode_bin_rows({:float, :field_type_float}, packet, _),         do: parse_float_packet(packet, 32)
-  defp handle_decode_bin_rows({:float, :field_type_double}, packet, _),        do: parse_float_packet(packet, 64)
-  defp handle_decode_bin_rows({:bit, :field_type_bit}, packet, _),             do: parse_bit_packet(packet)
+  defp type_to_atom({:string, _mysql_type}),              do: :string
+  defp type_to_atom({:integer, :field_type_tiny}),        do: :uint8
+  defp type_to_atom({:integer, :field_type_short}),       do: :uint16
+  defp type_to_atom({:integer, :field_type_int24}),       do: :uint32
+  defp type_to_atom({:integer, :field_type_long}),        do: :uint32
+  defp type_to_atom({:integer, :field_type_longlong}),    do: :uint64
+  defp type_to_atom({:integer, :field_type_year}),        do: :year
+  defp type_to_atom({:time, :field_type_time}),           do: :time
+  defp type_to_atom({:date, :field_type_date}),           do: :date
+  defp type_to_atom({:timestamp, :field_type_datetime}),  do: :datetime
+  defp type_to_atom({:timestamp, :field_type_timestamp}), do: :datetime
+  defp type_to_atom({:decimal, :field_type_newdecimal}),  do: :decimal
+  defp type_to_atom({:float, :field_type_float}),         do: :float32
+  defp type_to_atom({:float, :field_type_double}),        do: :float64
+  defp type_to_atom({:bit, :field_type_bit}),             do: :bit
+  defp type_to_atom({:null, :field_type_null}),           do: nil
+
+
+  defp handle_decode_bin_rows(:string, packet, _),           do: length_encoded_string(packet)
+  defp handle_decode_bin_rows(:uint8, packet, flags),        do: parse_int_packet(packet, 8, flags)
+  defp handle_decode_bin_rows(:uint16, packet, flags),       do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows(:uint32, packet, flags),       do: parse_int_packet(packet, 32, flags)
+  defp handle_decode_bin_rows(:uint64, packet, flags),       do: parse_int_packet(packet, 64, flags)
+  defp handle_decode_bin_rows(:year, packet, flags),         do: parse_int_packet(packet, 16, flags)
+  defp handle_decode_bin_rows(:time, packet, _),             do: parse_time_packet(packet)
+  defp handle_decode_bin_rows(:date, packet, _),             do: parse_date_packet(packet)
+  defp handle_decode_bin_rows(:datetime, packet, _),         do: parse_datetime_packet(packet)
+  defp handle_decode_bin_rows(:decimal, packet, _),          do: parse_decimal_packet(packet)
+  defp handle_decode_bin_rows(:float32, packet, _),          do: parse_float_packet(packet, 32)
+  defp handle_decode_bin_rows(:float64, packet, _),          do: parse_float_packet(packet, 64)
+  defp handle_decode_bin_rows(:bit , packet, _),             do: parse_bit_packet(packet)
+  defp handle_decode_bin_rows(nil, _, _),                    do: nil
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet
