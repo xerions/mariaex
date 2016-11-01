@@ -117,7 +117,7 @@ defmodule Mariaex.Protocol do
 
   defp handshake_recv(state, request) do
     case msg_recv(state) do
-      {:ok, packet} ->
+      {:ok, packet, state} ->
         handle_handshake(packet, request, state)
       {:error, reason} ->
         {sock_mod, _} = state.sock
@@ -215,9 +215,9 @@ defmodule Mariaex.Protocol do
   def disconnect(_, state = %{sock: {sock_mod, sock}}) do
     msg_send(text_cmd(command: com_quit(), statement: ""), state, 0)
     case msg_recv(state) do
-      {:ok, packet(msg: ok_resp())} ->
+      {:ok, packet(msg: ok_resp()), _state} ->
         sock_mod.close(sock)
-      {:ok, packet(msg: _)} ->
+      {:ok, packet(msg: _), _state} ->
         sock_mod.close(sock)
       {:error, _} ->
         :ok
@@ -598,22 +598,38 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  defp msg_recv(%{sock: sock, state: state, timeout: timeout}) do
-    msg_recv(sock, state, timeout)
-  end
+  defp msg_recv(%{sock: sock_info, state: decode_state, timeout: timeout, buffer: buffer}=state) do
+    buffer = receive_at_least_one_packet(sock_info, timeout, buffer, :infinity)
 
-  defp msg_recv({sock_mod, sock}, decode_state, timeout) do
-    case sock_mod.recv(sock, 4, timeout) do
-      {:ok, << len :: size(24)-little-integer, _seqnum :: size(8)-integer >> = header} ->
-        case sock_mod.recv(sock, len, timeout) do
-          {:ok, packet_body} ->
-            {packet, ""} = decode(header <> packet_body, decode_state)
-            {:ok, packet}
-          {:error, _} = error ->
-            error
-        end
+    case buffer do
+      {:ok, << len :: size(24)-little-integer, _seqnum :: size(8)-integer, rest :: binary >> =header} ->
+        {packet, rest} = decode(header, decode_state)
+        {:ok, packet, %{state | buffer: rest}}
+
       {:error, _} = error ->
         error
+    end
+  end
+
+  defp receive_at_least_one_packet(_, _, buffer, remaining) when remaining <= 0 do
+    {:ok, buffer}
+  end
+
+  defp receive_at_least_one_packet(sock, timeout, <<len :: size(24)-little-integer, _seqnum :: size(8)-integer, rest :: binary>>=buffer, remaining) do
+    receive_at_least_one_packet(sock, timeout, buffer, len - byte_size(rest))
+  end
+
+  defp receive_at_least_one_packet({sock_mod, sock}=s, timeout, buffer, remaining) do
+
+    case sock_mod.recv(sock, 0, timeout) do
+      {:ok, << len :: size(24)-little-integer, rest :: binary>>=header} ->
+        receive_at_least_one_packet(s, timeout, buffer <> header, len - byte_size(rest))
+
+      {:ok, bytes} ->
+        receive_at_least_one_packet(s, timeout, buffer <> bytes, remaining - byte_size(bytes))
+
+      {:error, _} = err ->
+        err
     end
   end
 
