@@ -27,6 +27,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @moduledoc """
   Implementation of `DBConnection.Query` protocol.
   """
+
   use Bitwise
   import Mariaex.Coder.Utils
   alias Mariaex.Messages
@@ -73,7 +74,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp parameters_to_binary(params, binary_as) do
     set = {<<>>, <<>>, <<>>}
     {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
-    << null_map_to_mysql(nullbits, <<>>) :: binary, 1 :: 8, typesbin :: binary, valuesbin :: binary >>
+    << null_bitfield_to_mysql(nullbits, <<>>) :: binary, 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
   defp encode_params({_, param}, {nullbits, typesbin, valuesbin}, binary_as) do
@@ -127,10 +128,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 
-  defp null_map_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do
-    null_map_to_mysql(rest, << acc :: bytes, reverse_bits(byte, "") :: bytes >>)
+  defp null_bitfield_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do
+    null_bitfield_to_mysql(rest, << acc :: bytes, reverse_bits(byte, "") :: bytes >>)
   end
-  defp null_map_to_mysql(bits, acc) do
+  defp null_bitfield_to_mysql(bits, acc) do
     padding = rem(8 - bit_size(bits), 8)
     << acc :: binary, 0 :: size(padding), reverse_bits(bits, "") :: bits >>
   end
@@ -191,21 +192,23 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   end
 
   def decode_bin_rows(packet, fields) do
-    # TODO: build a static list of decoders and pass that.
     nullbin_size = div(length(fields) + 7 + 2, 8)
     << 0 :: 8, nullbin :: size(nullbin_size)-binary, rest :: binary >> = packet
-    nullbin = null_map_from_mysql(nullbin)
-    decode_bin_rows(rest, fields, nullbin, [])
+    null_bitfield = null_bitfield_from_mysql(nullbin)
+    decode_bin_rows(rest, fields, null_bitfield, [])
   end
+
   def decode_bin_rows(<<>>, [], _, acc) do
     Enum.reverse(acc)
   end
-  def decode_bin_rows(packet, [_ | fields], << 1 :: 1, nullrest :: bits >>, acc) do
-    decode_bin_rows(packet, fields, nullrest, [nil | acc])
+
+  def decode_bin_rows(packet, [_ | fields], null_bitfield, acc) when (null_bitfield &&& 1) == 1 do
+    decode_bin_rows(packet, fields, null_bitfield >>> 1, [nil | acc])
   end
-  def decode_bin_rows(packet, [{row_type, flags} | fields], << 0 :: 1, nullrest :: bits >>, acc) do
+
+  def decode_bin_rows(packet, [{row_type, flags} | fields], null_bitfield, acc) do
     {value, next} = handle_decode_bin_rows(row_type, packet, flags)
-    decode_bin_rows(next, fields, nullrest, [value | acc])
+    decode_bin_rows(next, fields, null_bitfield >>> 1, [value | acc])
   end
 
   defp type_to_atom({:string, _mysql_type}),              do: :string
@@ -240,6 +243,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp handle_decode_bin_rows(:float64, packet, _),          do: parse_float_packet(packet, 64)
   defp handle_decode_bin_rows(:bit , packet, _),             do: parse_bit_packet(packet)
   defp handle_decode_bin_rows(nil, _, _),                    do: nil
+
 
   defp parse_float_packet(packet, size) do
     << value :: size(size)-float-little, rest :: binary >> = packet
@@ -301,13 +305,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     {bitstring, rest}
   end
 
-  defp null_map_from_mysql(nullbin) do
-    << f :: 1, e :: 1, d :: 1, c :: 1, b :: 1, a ::1, _ :: 2, rest :: binary >> = nullbin
-    reversebin = for << x :: 8-bits <- rest >>, into: <<>> do
-      << i :: 1, j :: 1, k :: 1, l :: 1, m :: 1, n :: 1, o :: 1, p :: 1 >> = x
-      << p :: 1, o :: 1, n :: 1, m :: 1, l :: 1, k :: 1, j :: 1, i :: 1 >>
-    end
-    << a :: 1, b :: 1, c :: 1, d :: 1, e :: 1, f :: 1, reversebin :: binary >>
+  defp null_bitfield_from_mysql(nullbin) do
+    size = byte_size(nullbin)
+    <<null_bitfield :: little-unsigned-size(size)-unit(8)>> = nullbin
+    null_bitfield >>> 2
   end
 end
 
