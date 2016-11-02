@@ -145,7 +145,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback,
                           :savepoint, :execute, :prepare, :truncate]
-
+  @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
   def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
@@ -175,10 +175,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   def do_decode(rows, columns, mapper) do
     row_types = columns
     |> Enum.map(fn(column) ->
-      column_type = Messages.__type__(:type, column.type)
-      |> type_to_atom
-
-      {column_type, column.flags}
+      Messages.__type__(:type, column.type)
+      |> type_to_atom(column.flags)
     end)
 
     rows
@@ -191,22 +189,57 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     end)
   end
 
-  defp type_to_atom({:string, _mysql_type}),              do: :string
-  defp type_to_atom({:integer, :field_type_tiny}),        do: :int8
-  defp type_to_atom({:integer, :field_type_short}),       do: :int16
-  defp type_to_atom({:integer, :field_type_int24}),       do: :int32
-  defp type_to_atom({:integer, :field_type_long}),        do: :int32
-  defp type_to_atom({:integer, :field_type_longlong}),    do: :int64
-  defp type_to_atom({:integer, :field_type_year}),        do: :year
-  defp type_to_atom({:time, :field_type_time}),           do: :time
-  defp type_to_atom({:date, :field_type_date}),           do: :date
-  defp type_to_atom({:timestamp, :field_type_datetime}),  do: :datetime
-  defp type_to_atom({:timestamp, :field_type_timestamp}), do: :datetime
-  defp type_to_atom({:decimal, :field_type_newdecimal}),  do: :decimal
-  defp type_to_atom({:float, :field_type_float}),         do: :float32
-  defp type_to_atom({:float, :field_type_double}),        do: :float64
-  defp type_to_atom({:bit, :field_type_bit}),             do: :bit
-  defp type_to_atom({:null, :field_type_null}),           do: nil
+  defp type_to_atom({:integer, :field_type_tiny}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    :uint8
+  end
+
+  defp type_to_atom({:integer, :field_type_tiny}, _) do
+    :int8
+  end
+
+  defp type_to_atom({:integer, :field_type_short}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    :uint16
+  end
+
+  defp type_to_atom({:integer, :field_type_short}, _) do
+    :int16
+  end
+
+  defp type_to_atom({:integer, :field_type_int24}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    :uint32
+  end
+
+  defp type_to_atom({:integer, :field_type_int24}, _) do
+    :int32
+  end
+
+  defp type_to_atom({:integer, :field_type_long}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    :uint32
+  end
+
+  defp type_to_atom({:integer, :field_type_long}, _) do
+    :int32
+  end
+
+  defp type_to_atom({:integer, :field_type_longlong}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
+    :uint64
+  end
+
+  defp type_to_atom({:integer, :field_type_longlong}, _) do
+    :int64
+  end
+
+  defp type_to_atom({:string, _mysql_type}, _),              do: :string
+  defp type_to_atom({:integer, :field_type_year}, _),        do: :year
+  defp type_to_atom({:time, :field_type_time}, _),           do: :time
+  defp type_to_atom({:date, :field_type_date}, _),           do: :date
+  defp type_to_atom({:timestamp, :field_type_datetime}, _),  do: :datetime
+  defp type_to_atom({:timestamp, :field_type_timestamp}, _), do: :datetime
+  defp type_to_atom({:decimal, :field_type_newdecimal}, _),  do: :decimal
+  defp type_to_atom({:float, :field_type_float}, _),         do: :float32
+  defp type_to_atom({:float, :field_type_double}, _),        do: :float64
+  defp type_to_atom({:bit, :field_type_bit}, _),             do: :bit
+  defp type_to_atom({:null, :field_type_null}, _),           do: nil
 end
 
 defimpl String.Chars, for: Mariaex.Query do
