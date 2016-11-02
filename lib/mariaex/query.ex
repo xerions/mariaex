@@ -32,6 +32,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   import Mariaex.Coder.Utils
   alias Mariaex.Messages
   alias Mariaex.Column
+  alias Mariaex.RowParser
 
   @doc """
   Parse a query.
@@ -145,7 +146,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
                           :alter, :rename, :drop, :begin, :commit, :rollback,
                           :savepoint, :execute, :prepare, :truncate]
 
-  @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
   def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
@@ -184,39 +184,19 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     rows
     |> Enum.reduce([], fn(row, acc) ->
       decoded_row = row
-      |> decode_bin_rows(row_types)
+      |> RowParser.decode_bin_rows(row_types)
       |> mapper.()
 
       [decoded_row | acc]
     end)
   end
 
-  def decode_bin_rows(packet, fields) do
-    nullbin_size = div(length(fields) + 7 + 2, 8)
-    << 0 :: 8, nullbin :: size(nullbin_size)-binary, rest :: binary >> = packet
-    null_bitfield = null_bitfield_from_mysql(nullbin)
-    decode_bin_rows(rest, fields, null_bitfield, [])
-  end
-
-  def decode_bin_rows(<<>>, [], _, acc) do
-    Enum.reverse(acc)
-  end
-
-  def decode_bin_rows(packet, [_ | fields], null_bitfield, acc) when (null_bitfield &&& 1) == 1 do
-    decode_bin_rows(packet, fields, null_bitfield >>> 1, [nil | acc])
-  end
-
-  def decode_bin_rows(packet, [{row_type, flags} | fields], null_bitfield, acc) do
-    {value, next} = handle_decode_bin_rows(row_type, packet, flags)
-    decode_bin_rows(next, fields, null_bitfield >>> 1, [value | acc])
-  end
-
   defp type_to_atom({:string, _mysql_type}),              do: :string
-  defp type_to_atom({:integer, :field_type_tiny}),        do: :uint8
-  defp type_to_atom({:integer, :field_type_short}),       do: :uint16
-  defp type_to_atom({:integer, :field_type_int24}),       do: :uint32
-  defp type_to_atom({:integer, :field_type_long}),        do: :uint32
-  defp type_to_atom({:integer, :field_type_longlong}),    do: :uint64
+  defp type_to_atom({:integer, :field_type_tiny}),        do: :int8
+  defp type_to_atom({:integer, :field_type_short}),       do: :int16
+  defp type_to_atom({:integer, :field_type_int24}),       do: :int32
+  defp type_to_atom({:integer, :field_type_long}),        do: :int32
+  defp type_to_atom({:integer, :field_type_longlong}),    do: :int64
   defp type_to_atom({:integer, :field_type_year}),        do: :year
   defp type_to_atom({:time, :field_type_time}),           do: :time
   defp type_to_atom({:date, :field_type_date}),           do: :date
@@ -227,89 +207,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp type_to_atom({:float, :field_type_double}),        do: :float64
   defp type_to_atom({:bit, :field_type_bit}),             do: :bit
   defp type_to_atom({:null, :field_type_null}),           do: nil
-
-
-  defp handle_decode_bin_rows(:string, packet, _),           do: length_encoded_string(packet)
-  defp handle_decode_bin_rows(:uint8, packet, flags),        do: parse_int_packet(packet, 8, flags)
-  defp handle_decode_bin_rows(:uint16, packet, flags),       do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows(:uint32, packet, flags),       do: parse_int_packet(packet, 32, flags)
-  defp handle_decode_bin_rows(:uint64, packet, flags),       do: parse_int_packet(packet, 64, flags)
-  defp handle_decode_bin_rows(:year, packet, flags),         do: parse_int_packet(packet, 16, flags)
-  defp handle_decode_bin_rows(:time, packet, _),             do: parse_time_packet(packet)
-  defp handle_decode_bin_rows(:date, packet, _),             do: parse_date_packet(packet)
-  defp handle_decode_bin_rows(:datetime, packet, _),         do: parse_datetime_packet(packet)
-  defp handle_decode_bin_rows(:decimal, packet, _),          do: parse_decimal_packet(packet)
-  defp handle_decode_bin_rows(:float32, packet, _),          do: parse_float_packet(packet, 32)
-  defp handle_decode_bin_rows(:float64, packet, _),          do: parse_float_packet(packet, 64)
-  defp handle_decode_bin_rows(:bit , packet, _),             do: parse_bit_packet(packet)
-  defp handle_decode_bin_rows(nil, _, _),                    do: nil
-
-
-  defp parse_float_packet(packet, size) do
-    << value :: size(size)-float-little, rest :: binary >> = packet
-    {value, rest}
-  end
-
-  defp parse_int_packet(packet, size, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    << value :: size(size)-little-unsigned, rest :: binary >> = packet
-    {value, rest}
-  end
-
-  defp parse_int_packet(packet, size, _flags) do
-    << value :: size(size)-little-signed, rest :: binary >> = packet
-    {value, rest}
-  end
-
-  defp parse_decimal_packet(packet) do
-    << length,  raw_value :: size(length)-little-binary, rest :: binary >> = packet
-    value = Decimal.new(raw_value)
-    {value, rest}
-  end
-
-  defp parse_time_packet(packet) do
-    case packet do
-      << 0 :: 8-little, rest :: binary >> ->
-        {{0, 0, 0, 0}, rest}
-      << 8 :: 8-little, _ :: 8-little, _ :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
-        {{hour, min, sec, 0}, rest}
-     << 12::8, _ :: 32-little, _ :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
-        {{hour, min, sec, msec}, rest}
-    end
-  end
-
-  defp parse_date_packet(packet) do
-    case packet do
-      << 0 :: 8-little, rest :: binary >> ->
-        {{0, 0, 0}, rest}
-      << 4 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, rest :: binary >> ->
-        {{year, month, day}, rest}
-    end
-  end
-
-  defp parse_datetime_packet(packet) do
-    case packet do
-      << 0 :: 8-little, rest :: binary >> ->
-        {{{0, 0, 0}, {0, 0, 0, 0}}, rest}
-      << 4 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, rest :: binary >> ->
-        {{{year, month, day}, {0, 0, 0, 0}}, rest}
-      << 7 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, rest :: binary >> ->
-        {{{year, month, day}, {hour, min, sec, 0}}, rest}
-      << 11 :: 8-little, year :: 16-little, month :: 8-little, day :: 8-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little, rest :: binary >> ->
-        {{{year, month, day}, {hour, min, sec, msec}}, rest}
-    end
-  end
-
-  defp parse_bit_packet(packet) do
-    {bitstring, rest} = length_encoded_string(packet)
-    ## TODO: implement right decoding of bit string, if somebody will need it.
-    {bitstring, rest}
-  end
-
-  defp null_bitfield_from_mysql(nullbin) do
-    size = byte_size(nullbin)
-    <<null_bitfield :: little-unsigned-size(size)-unit(8)>> = nullbin
-    null_bitfield >>> 2
-  end
 end
 
 defimpl String.Chars, for: Mariaex.Query do
