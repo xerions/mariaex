@@ -7,12 +7,7 @@ defmodule Mariaex.RowParser do
   """
   use Bitwise
 
-  def decode_bin_rows(packet, fields) do
-    nullbin_size = div(length(fields) + 7 + 2, 8)
-    decode_bin_rows(packet, fields, nullbin_size)
-  end
-
-  defp decode_bin_rows(packet, fields, nullbin_size) do
+  def decode_bin_rows(packet, fields, nullbin_size) do
     << 0 :: 8, null_bitfield :: size(nullbin_size)-little-unit(8), rest :: binary >> = packet
     decode_bin_rows(rest, fields, null_bitfield >>> 2, [])
   end
