@@ -419,14 +419,35 @@ defmodule Mariaex.Protocol do
         {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
   end
-  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s = %{rows: acc}) do
-    binary_query_recv(%{s | rows: [row | acc]}, query)
+  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s) do
+    binary_row_decode(%{s | buffer: :bin_rows}, query, [row], s.buffer)
   end
   defp handle_binary_query(packet(msg: eof_resp()), query, s) do
     binary_query_recv(%{s | state: :bin_rows}, query)
   end
   defp handle_binary_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
   defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
+
+  defp binary_row_decode(s, query, rows, buffer) do
+    case decode_bin_rows(buffer, rows) do
+      {:ok, packet, rows, rest} ->
+        handle_binary_query(packet, query, %{s | buffer: rest, rows: rows})
+      {:more, rows, rest} ->
+        binary_row_recv(s, query, rows, rest)
+    end
+  end
+
+  defp binary_row_recv(s, query, rows, buffer) do
+    %{sock: {sock_mod, sock}, timeout: timeout} = s
+    case sock_mod.recv(sock, 0, timeout) do
+      {:ok, data} when buffer == "" ->
+        binary_row_decode(s, query, rows, data)
+      {:ok, data} ->
+        binary_row_decode(s, query, rows, buffer <> data)
+      {:error, reason} ->
+        do_disconnect(%{s | buffer: buffer}, {sock_mod.tag, "recv", reason, ""})
+    end
+  end
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
     {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
