@@ -211,6 +211,19 @@ defmodule Mariaex.Messages do
   def decode(rest, _state),
     do: {nil, rest}
 
+  def decode_bin_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>, rows) do
+    case body do
+      <<0 :: 8, _ :: binary>> ->
+        decode_bin_rows(rest, [body | rows])
+      body ->
+        msg = decode_msg(body, :bin_row)
+        {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
+    end
+  end
+  def decode_bin_rows(<<rest :: binary>>, rows) do
+    {:more, rows, rest}
+  end
+
   defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :handshake),                                               do: __decode__(:handshake, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :bin_rows),                    do: __decode__(:bin_row, body)

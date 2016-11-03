@@ -179,10 +179,12 @@ defimpl DBConnection.Query, for: Mariaex.Query do
       |> type_to_atom(column.flags)
     end)
 
+    nullbin_size = div(length(row_types) + 7 + 2, 8)
+
     rows
     |> Enum.reduce([], fn(row, acc) ->
       decoded_row = row
-      |> RowParser.decode_bin_rows(row_types)
+      |> RowParser.decode_bin_rows(row_types, nullbin_size)
       |> mapper.()
 
       [decoded_row | acc]
