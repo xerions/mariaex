@@ -1,42 +1,40 @@
 defmodule Mariaex.Cache do
-  @moduledoc """
-  Simple cache for named queries
-  """
+  @moduledoc false
 
-  @doc """
-  Create cache
-  """
   def new() do
     :ets.new(:cache, [:public])
   end
 
-  @doc """
-  Lookup the named query in cache
-  """
-  def lookup(cache, name) do
-    case :ets.lookup(cache, name) do
-      [{_, info}] -> info
-      _ -> nil
-    end
-  end
-
-  @doc """
-  Delete query, which get the cleanup fun to cleanup the actual prepared query
-  """
-  def delete(cache, name, cleanup) do
-    case :ets.lookup(cache, name) do
-      [{_, info}] ->
-        :ets.delete(cache, name)
-        cleanup.(name, info)
-      _ ->
+  def id(cache, name) do
+    try do
+      :ets.lookup_element(cache, name, 2)
+    catch
+      :error, :badarg ->
         nil
     end
   end
 
-  @doc """
-  Inserts the named queries with associated data.
-  """
-  def insert(cache, name, data) do
-    :ets.insert(cache, {name, data})
+  def lookup(cache, name) do
+    case :ets.match(cache, {name, :"$1", :"$2"}) do
+      [[id, types]] ->
+        {id, types}
+      [] ->
+        nil
+    end
+  end
+
+  def take(cache, name) do
+    case :ets.take(cache, name) do
+      [{_, id, _}] -> id
+      []           -> nil
+    end
+  end
+
+  def insert_new(cache, name, id, ref) do
+    :ets.insert_new(cache, {name, id, ref})
+  end
+
+  def delete(cache, name) do
+    :ets.delete(cache, name)
   end
 end
