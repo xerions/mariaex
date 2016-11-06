@@ -239,6 +239,41 @@ defmodule Mariaex do
   end
 
   @doc """
+  Close a prepared a query and returns `:ok` or `{:error, %Mariaex.Error{}}` if
+  there was an error.
+
+  ## Options
+
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
+    * `:pool` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
+
+  ## Examples
+
+      query = Mariaex.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
+      Mariaex.close(conn, query)
+  """
+  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  def close(conn, query, opts \\ []) do
+    case DBConnection.close(conn, query, defaults(opts)) do
+      {:ok, _} -> :ok
+      other    -> arg_error_raiser(other)
+    end
+  end
+
+  @doc """
+  Close a prepared query and returns `:ok` or raises
+  `Mariaex.Error` if there was an error. See `close/3`.
+  """
+  @spec close!(conn, Mariaex.Query.t, Keyword.t) :: :ok
+  def close!(conn, query, opts \\ []) do
+    DBConnection.close!(conn, query, defaults(opts))
+  end
+
+  @doc """
   Acquire a lock on a connection and run a series of requests inside a
   transaction. The result of the transaction fun is return inside an `:ok`
   tuple: `{:ok, result}`.

@@ -77,6 +77,35 @@ defmodule Mariaex.TestHelper do
     end
   end
 
+  defmacro prepare(stat, opts \\ []) do
+    quote do
+      case Mariaex.prepare(var!(context)[:pid], unquote(stat), unquote(opts)) do
+        {:ok, %Mariaex.Query{} = query} -> query
+        {:error, %Mariaex.Error{} = err} -> err
+      end
+    end
+  end
+
+  defmacro execute(query, params, opts \\ []) do
+    quote do
+      case Mariaex.execute(var!(context)[:pid], unquote(query), unquote(params),
+                           unquote(opts)) do
+        {:ok, %Mariaex.Result{rows: nil}} -> :ok
+        {:ok, %Mariaex.Result{rows: rows}} -> rows
+        {:error, %Mariaex.Error{} = err} -> err
+      end
+    end
+  end
+
+  defmacro close(query, opts \\ []) do
+    quote do
+      case Mariaex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
+        :ok -> :ok
+        {:error, %Mariaex.Error{} = err} -> err
+      end
+    end
+  end
+
   def capture_log(fun) do
     Logger.remove_backend(:console)
     fun.()
