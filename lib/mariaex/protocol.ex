@@ -117,7 +117,7 @@ defmodule Mariaex.Protocol do
 
   defp handshake_recv(state, request) do
     case msg_recv(state) do
-      {:ok, packet} ->
+      {:ok, packet, state} ->
         handle_handshake(packet, request, state)
       {:error, reason} ->
         {sock_mod, _} = state.sock
@@ -215,9 +215,9 @@ defmodule Mariaex.Protocol do
   def disconnect(_, state = %{sock: {sock_mod, sock}}) do
     msg_send(text_cmd(command: com_quit(), statement: ""), state, 0)
     case msg_recv(state) do
-      {:ok, packet(msg: ok_resp())} ->
+      {:ok, packet(msg: ok_resp()), _state} ->
         sock_mod.close(sock)
-      {:ok, packet(msg: _)} ->
+      {:ok, packet(msg: _), _state} ->
         sock_mod.close(sock)
       {:error, _} ->
         :ok
@@ -419,14 +419,35 @@ defmodule Mariaex.Protocol do
         {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
   end
-  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s = %{rows: acc}) do
-    binary_query_recv(%{s | rows: [row | acc]}, query)
+  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s) do
+    binary_row_decode(%{s | buffer: :bin_rows}, query, [row], s.buffer)
   end
   defp handle_binary_query(packet(msg: eof_resp()), query, s) do
     binary_query_recv(%{s | state: :bin_rows}, query)
   end
   defp handle_binary_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
   defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
+
+  defp binary_row_decode(s, query, rows, buffer) do
+    case decode_bin_rows(buffer, rows) do
+      {:ok, packet, rows, rest} ->
+        handle_binary_query(packet, query, %{s | buffer: rest, rows: rows})
+      {:more, rows, rest} ->
+        binary_row_recv(s, query, rows, rest)
+    end
+  end
+
+  defp binary_row_recv(s, query, rows, buffer) do
+    %{sock: {sock_mod, sock}, timeout: timeout} = s
+    case sock_mod.recv(sock, 0, timeout) do
+      {:ok, data} when buffer == "" ->
+        binary_row_decode(s, query, rows, data)
+      {:ok, data} ->
+        binary_row_decode(s, query, rows, buffer <> data)
+      {:error, reason} ->
+        do_disconnect(%{s | buffer: buffer}, {sock_mod.tag, "recv", reason, ""})
+    end
+  end
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
     {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
@@ -598,23 +619,49 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  defp msg_recv(%{sock: sock, state: state, timeout: timeout}) do
-    msg_recv(sock, state, timeout)
+  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state) do
+    msg_recv(sock_info, state, buffer)
   end
 
-  defp msg_recv({sock_mod, sock}, decode_state, timeout) do
-    case sock_mod.recv(sock, 4, timeout) do
-      {:ok, << len :: size(24)-little-integer, _seqnum :: size(8)-integer >> = header} ->
-        case sock_mod.recv(sock, len, timeout) do
-          {:ok, packet_body} ->
-            {packet, ""} = decode(header <> packet_body, decode_state)
-            {:ok, packet}
-          {:error, _} = error ->
-            error
-        end
-      {:error, _} = error ->
-        error
+  defp msg_recv(sock, state, buffer) do
+    case msg_decode(buffer, state) do
+      {:ok, _packet, _new_state}=success ->
+        success
+
+      {:more, more} ->
+        msg_recv(sock, state, buffer, more)
+
+      {:error, _}=err ->
+        err
     end
+  end
+
+  defp msg_recv({sock_mod, sock}=s, state, buffer, more) do
+
+    case sock_mod.recv(sock, more, state.timeout) do
+      {:ok, data} when byte_size(data) < more ->
+        msg_recv(s, state, [buffer | data], more - byte_size(data))
+
+      {:ok, data} when is_binary(buffer) ->
+        msg_recv(s, state, buffer <> data)
+
+      {:ok, data} when is_list(buffer) ->
+        msg_recv(s, state, IO.iodata_to_binary([buffer | data]))
+
+      {:error, _} = err ->
+          err
+    end
+  end
+
+
+  def msg_decode(<< len :: size(24)-little-integer, _seqnum :: size(8)-integer, message :: binary>>=header, state) when byte_size(message) >= len do
+
+    {packet, rest} = decode(header, state.state)
+    {:ok, packet, %{state | buffer: rest}}
+  end
+
+  def msg_decode(_buffer, _state) do
+    {:more, 0}
   end
 
   def_handle :ping_recv, :ping_handle

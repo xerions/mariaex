@@ -3,7 +3,7 @@ defmodule Mariaex.ProtocolHelper do
     quote do
       defp unquote(recv_func)(state, request) do
         case msg_recv(state) do
-          {:ok, packet} ->
+          {:ok, packet, state} ->
             unquote(handle_func)(packet, request, state)
           {:error, reason} ->
             {sock_mod, _} = state.sock
