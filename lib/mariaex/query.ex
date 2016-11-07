@@ -232,7 +232,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   end
 
   defp type_to_atom({:string, _mysql_type}, _),              do: :string
-  defp type_to_atom({:integer, :field_type_year}, _),        do: :year
+  defp type_to_atom({:integer, :field_type_year}, _),        do: :uint16
   defp type_to_atom({:time, :field_type_time}, _),           do: :time
   defp type_to_atom({:date, :field_type_date}, _),           do: :date
   defp type_to_atom({:timestamp, :field_type_datetime}, _),  do: :datetime

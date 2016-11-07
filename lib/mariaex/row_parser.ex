@@ -52,10 +52,6 @@ defmodule Mariaex.RowParser do
     decode_int64(rest, fields, null_bitfield >>> 1, acc)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:year | fields], null_bitfield, acc) do
-    decode_int16(rest, fields, null_bitfield >>> 1, acc)
-  end
-
   defp decode_bin_rows(<<rest::bits>>, [:time | fields], null_bitfield, acc) do
     decode_time(rest, fields, null_bitfield >>> 1, acc)
   end
