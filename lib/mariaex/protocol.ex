@@ -93,11 +93,12 @@ defmodule Mariaex.Protocol do
     |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
     |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
+    |> Keyword.put_new(:port, System.get_env("MDBPORT") || 3306)
     |> Keyword.put_new(:timeout, @timeout)
     |> Keyword.put_new(:cache_size, @cache_size)
     |> Keyword.put_new(:sock_type, :tcp)
     |> Keyword.put_new(:socket_options, [])
-    |> Keyword.update(:port, 3306, &normalize_port/1)
+    |> Keyword.update!(:port, &normalize_port/1)
     end
 
   defp set_initial_ssl_conn_state(opts) do
