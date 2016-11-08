@@ -4,6 +4,7 @@ defmodule Mariaex.Protocol do
   alias Mariaex.Cache
   alias Mariaex.LruCache
   alias Mariaex.Query
+  alias Mariaex.Cursor
   alias Mariaex.Column
   import Mariaex.Messages
   import Mariaex.ProtocolHelper
@@ -16,6 +17,7 @@ defmodule Mariaex.Protocol do
   @keepalive_interval 60000
   @keepalive_timeout @timeout
   @cache_size 100
+  @max_rows 500
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
@@ -32,12 +34,13 @@ defmodule Mariaex.Protocol do
   @client_secure_connection 0x00008000
   @client_multi_statements  0x00010000
   @client_multi_results     0x00020000
+  @client_ps_multi_results  0x00040000
   @client_deprecate_eof     0x01000000
 
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
-                @client_deprecate_eof
+                @client_ps_multi_results  ||| @client_deprecate_eof
 
   defstruct sock: nil,
             state: nil,
@@ -52,6 +55,7 @@ defmodule Mariaex.Protocol do
             timeout: 0,
             lru_cache: nil,
             cache: nil,
+            cursors: %{},
             seqnum: 0,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
@@ -415,7 +419,7 @@ defmodule Mariaex.Protocol do
       id when is_integer(id) ->
         {:close_prepare_execute, id, query}
       nil ->
-        {:prepare_execute, query, query}
+        {:prepare_execute, query}
     end
   end
   defp execute_lookup(%Query{name: name, ref: ref} = query, %{cache: cache}) do
@@ -473,13 +477,17 @@ defmodule Mariaex.Protocol do
     s = if s.state_data == {nil, 0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
     binary_query_recv(s, query)
   end
-  defp handle_binary_query(packet(msg: eof_resp()), %{statement: statement} = query, s = %{catch_eof: catch_eof, state: :bin_rows}) do
+  defp handle_binary_query(packet(msg: eof_resp(status_flags: flags)), %{statement: statement} = query, s = %{catch_eof: catch_eof, state: :bin_rows}) do
     command = get_command(statement)
     cond do
       (command == :call) ->
         binary_query_recv(s, query)
       catch_eof ->
         binary_query_recv(%{s | catch_eof: false}, query)
+      (flags &&& 0x80) == 0x80  ->
+        {:done, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+      (flags &&& 0x40) == 0x40 ->
+        {:more,  {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
       true ->
         {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
@@ -562,6 +570,163 @@ defmodule Mariaex.Protocol do
         :closed
     end
   end
+
+  def handle_declare(query, params, opts, state) do
+    case declare_lookup(query, state) do
+      {:declare, id} ->
+        declare(id, params, opts, state)
+      {:prepare_declare, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_declare(&prepare(prep, &1), query, params, opts, state)
+      {:close_prepare_execute, id, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_declare(&close_prepare(id, prep, &1), query, params, opts, state)
+      {:text, _} ->
+        cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
+        {:ok, cursor, state}
+    end
+  end
+
+  defp declare_lookup(%Query{type: :text} = query, _), do: {:text, query}
+  defp declare_lookup(%Query{name: "", statement: statement} = query, %{lru_cache: cache}) do
+    case LruCache.take(cache, statement) do
+      id when is_integer(id) ->
+        {:declare, id}
+      nil ->
+        {:prepare_declare, query}
+    end
+  end
+  defp declare_lookup(%Query{name: name, ref: ref} = query, %{cache: cache}) do
+    case Cache.lookup(cache, name) do
+      {id, ^ref} ->
+        Cache.delete(cache, name)
+        {:declare, id}
+      {id, _} ->
+        Cache.delete(cache, name)
+        {:close_prepare_declare, id, query}
+      nil ->
+        {:prepare_declare, query}
+    end
+  end
+
+  defp declare(id, params, opts, state) do
+    max_rows = Keyword.get(opts, :max_rows, @max_rows)
+    cursor = %Cursor{statement_id: id, params: params, ref: make_ref(), max_rows: max_rows}
+    {:ok, cursor, state}
+  end
+
+  defp prepare_declare(prepare, query, params, opts, state) do
+    %Query{types: types, parameter_types: parameter_types} = query
+    case prepare.(state) do
+      {:ok, %Query{types: ^types, parameter_types: ^parameter_types}, state} ->
+        id = prepare_declare_lookup(query, state)
+        declare(id, params, opts, state)
+      {:ok, _, state} ->
+        stale_error(query, state)
+      {err, _, _} = error when err in [:error, :disconnect] ->
+        error
+    end
+  end
+
+  defp prepare_declare_lookup(%Query{name: "", statement: statement}, %{lru_cache: cache}) do
+    LruCache.take(cache, statement)
+  end
+  defp prepare_declare_lookup(%Query{name: name}, %{cache: cache}) do
+    Cache.take(cache, name)
+  end
+
+  def handle_first(query, %Cursor{statement_id: :text, params: params}, opts, state) do
+    case handle_execute(query, params, opts, state) do
+      {:ok, result, state} ->
+        {:deallocate, result, state}
+      other ->
+        other
+    end
+  end
+  def handle_first(query, %Cursor{statement_id: id, params: params} = cursor, _, state) do
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params,
+    statement_id: id, flags: 1, iteration_count: 1), state, 0)
+    case binary_query_recv(%{state | state: :column_count}, query) do
+      {:more, result, state} ->
+        {:ok, result, put_cursor(state, cursor)}
+      other ->
+        other
+    end
+  end
+
+  defp put_cursor(%{cursors: cursors} = state, %Cursor{ref: ref, statement_id: id}) do
+    %{state | cursors: Map.put(cursors, ref, id)}
+  end
+
+  def handle_next(query, %Cursor{statement_id: id, max_rows: max_rows}, _, state) do
+    msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
+    case binary_query_recv(%{state | state: :bin_rows}, query) do
+      {:more, result, state} ->
+        {:ok, result, state}
+      {:done, result, state} ->
+        {:deallocate, result, state}
+      other ->
+        other
+    end
+  end
+
+  def handle_deallocate(%Query{type: :text}, _, _, state) do
+    {:ok, nil, state}
+  end
+  def handle_deallocate(query, %Cursor{statement_id: id, ref: ref}, _, %{cursors: cursors} = state) do
+    case Map.pop(cursors, ref) do
+      {^id, cursors} ->
+        deallocate(id, query, %{state | cursors: cursors})
+      {nil, _} ->
+        {:ok, nil, state}
+    end
+  end
+
+  defp deallocate(id, query, state) do
+    case deallocate_insert(id, query, state) do
+      {:reset, reset_id, query} ->
+        msg = stmt_reset(command: com_stmt_reset(), statement_id: reset_id)
+        deallocate_send(msg, query, state)
+      {:close_reset, close_id, reset_id, query} ->
+        msgs = [stmt_close(command: com_stmt_close(), statement_id: close_id),
+                stmt_reset(command: com_stmt_reset(), statement_id: reset_id)]
+        deallocate_send(msgs, query, state)
+      {:close, close_id} ->
+        msg_send(stmt_close(command: com_stmt_close(), statement_id: close_id), state, 0)
+        {:ok, nil, state}
+    end
+  end
+
+  defp deallocate_insert(id, %Query{name: "", statement: statement, ref: ref, types: types, parameter_types: parameter_types} = query, %{lru_cache: cache}) do
+    case LruCache.insert_new(cache, statement, id, ref, {types, parameter_types}) do
+      true ->
+        case LruCache.garbage_collect(cache) do
+          close_id  when is_integer(close_id) ->
+            {:reset_close, id, query, close_id}
+          nil ->
+            {:reset, id, query}
+        end
+      false ->
+        {:close, id}
+    end
+  end
+  defp deallocate_insert(id, %Query{name: name, ref: ref} = query, %{cache: cache}) do
+    case Cache.insert_new(cache, name, id, ref) do
+      true ->
+        {:reset, id, query}
+      false ->
+        {:close, id}
+    end
+  end
+
+  defp deallocate_send(msg, query, state) do
+    msg_send(msg, state, 0)
+    handle_deallocate_recv(state, query)
+  end
+
+  def_handle :handle_deallocate_recv, :handle_deallocate_query
+  defp handle_deallocate_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
+  defp handle_deallocate_query(packet, query, s), do: handle_error(packet, query, s)
 
   @doc """
   DBConnection callback

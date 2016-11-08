@@ -20,7 +20,7 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0"},
+     {:db_connection, "~> 1.0", github: "fishcakez/db_connection", branch: "jf-stream"},
      {:coverex, "~> 1.4.3", only: :test}]
   end
 

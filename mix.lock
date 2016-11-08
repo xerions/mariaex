@@ -1,6 +1,6 @@
 %{"connection": {:hex, :connection, "1.0.4", "a1cae72211f0eef17705aaededacac3eb30e6625b04a6117c1b2db6ace7d5976", [:mix], []},
   "coverex": {:hex, :coverex, "1.4.3", "c9e5520ac10c4eccaa0611605ddf769e50079ca348060329b698db3b058c2720", [:mix], [{:httpoison, "0.7.2", [hex: :httpoison, optional: false]}, {:poison, "~> 1.4.0", [hex: :poison, optional: false]}]},
-  "db_connection": {:hex, :db_connection, "1.0.0", "63c03e520d54886a66104d34e32397ba960db6e74b596ce221592c07d6a40d8d", [:mix], [{:connection, "~> 1.0.2", [hex: :connection, optional: false]}, {:poolboy, "~> 1.5", [hex: :poolboy, optional: true]}, {:sbroker, "~> 1.0", [hex: :sbroker, optional: true]}]},
+  "db_connection": {:git, "https://github.com/fishcakez/db_connection.git", "fd699b3e54b2e80a38316849bbf1312cd49e8261", [branch: "jf-stream"]},
   "decimal": {:hex, :decimal, "1.1.0", "3333732f17a90ff3057d7ab8c65f0930ca2d67e15cca812a91ead5633ed472fe", [:mix], []},
   "hackney": {:hex, :hackney, "1.3.2", "43bd07ab88753f5e136e38fddd2a09124bee25733b03361eeb459d0173fc17ab", [:rebar, :make], [{:idna, "~> 1.0.2", [hex: :idna, optional: false]}, {:ssl_verify_hostname, "~> 1.0.5", [hex: :ssl_verify_hostname, optional: false]}]},
   "httpoison": {:hex, :httpoison, "0.7.2", "e13ab8c056481b83aebe225fbc2260c3dfeac4d7271e9af80f234e3186fa843b", [:mix], [{:hackney, "~> 1.3.1", [hex: :hackney, optional: false]}]},

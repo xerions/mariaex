@@ -32,6 +32,7 @@ defmodule Mariaex do
   @pool_timeout 5000
   @timeout 5000
   @idle_timeout 5000
+  @max_rows 500
   ### PUBLIC API ###
 
   @doc """
@@ -334,6 +335,32 @@ defmodule Mariaex do
   """
   @spec rollback(DBConnection.t, any) :: no_return()
   defdelegate rollback(conn, any), to: DBConnection
+
+  @doc """
+  Returns a stream for a query on a connection.
+
+  Streams read chunks of at most `max_rows` rows and can only be used inside a
+  transaction.
+
+  ### Options
+    * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
+
+      Mariaex.transaction(pid, fn(conn) ->
+        stream = Mariaex.stream(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
+        Enum.to_list(stream)
+      end)
+  """
+  @spec stream(DBConnection.t, iodata | Mariaex.Query.t, list, Keyword.t) ::
+    DBConnection.Stream.t
+  def stream(conn, query, params, opts \\ [])
+
+  def stream(conn, %Query{} = query, params, opts) do
+    DBConnection.stream(conn, query, params, opts)
+  end
+  def stream(conn, statement, params, opts) do
+    query = %Query{name: "", statement: statement}
+    DBConnection.prepare_stream(conn, query, params, opts)
+  end
 
   @doc """
   Returns a supervisor child specification for a DBConnection pool.

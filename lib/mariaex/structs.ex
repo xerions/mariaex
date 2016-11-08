@@ -35,3 +35,8 @@ defmodule Mariaex.Error do
     end
   end
 end
+
+defmodule Mariaex.Cursor do
+  @moduledoc false
+  defstruct [:ref, :statement_id, :params, max_rows: 0]
+end
