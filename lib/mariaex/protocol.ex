@@ -481,12 +481,12 @@ defmodule Mariaex.Protocol do
     cond do
       (command == :call) ->
         binary_query_recv(s, query)
-      catch_eof ->
-        binary_query_recv(%{s | catch_eof: false}, query)
       (flags &&& 0x80) == 0x80  ->
         {:done, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
       (flags &&& 0x40) == 0x40 ->
         {:more,  {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+      catch_eof ->
+        binary_query_recv(%{s | catch_eof: false}, query)
       true ->
         {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
     end
@@ -648,7 +648,7 @@ defmodule Mariaex.Protocol do
     case binary_query_recv(%{state | state: :column_count}, query) do
       {:more, result, state} ->
         {:ok, result, state}
-      other ->
+      {error, _, _} = other when error in [:error, :disconnect] ->
         other
     end
   end
@@ -660,7 +660,7 @@ defmodule Mariaex.Protocol do
         {:ok, result, state}
       {:done, result, state} ->
         {:deallocate, result, state}
-      other ->
+      {error, _, _} = other when error in [:error, :disconnect] ->
         other
     end
   end
