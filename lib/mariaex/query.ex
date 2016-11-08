@@ -73,13 +73,14 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   defp parameters_to_binary([], _binary_as), do: <<>>
   defp parameters_to_binary(params, binary_as) do
-    set = {<<>>, <<>>, <<>>}
-    {nullbits, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
-    << null_bitfield_to_mysql(nullbits, <<>>) :: binary, 1 :: 8, typesbin :: binary, valuesbin :: binary >>
+    set = {0, 0, <<>>, <<>>}
+    {nullint, len, typesbin, valuesbin} = Enum.reduce(params, set, fn(p, acc) -> encode_params(p, acc, binary_as) end)
+    nullbin_size = div(len + 7, 8)
+    << nullint :: size(nullbin_size)-little-unit(8), 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
-  defp encode_params({_, param}, {nullbits, typesbin, valuesbin}, binary_as) do
-    {nullbit, type, value} = encode_param(param, binary_as)
+  defp encode_params({_, param}, {nullint, idx, typesbin, valuesbin}, binary_as) do
+    {nullvalue, type, value} = encode_param(param, binary_as)
 
     types_part = case type do
       :field_type_longlong ->
@@ -94,7 +95,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     end
 
     {
-      << nullbits :: bitstring, nullbit :: 1>>,
+      nullint ||| (nullvalue <<< idx),
+      idx + 1,
       types_part,
       << valuesbin :: binary, value :: binary >>
     }
@@ -128,19 +130,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
   defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
-
-  defp null_bitfield_to_mysql(<<byte :: 1-bytes, rest :: bits>>, acc) do
-    null_bitfield_to_mysql(rest, << acc :: bytes, reverse_bits(byte, "") :: bytes >>)
-  end
-  defp null_bitfield_to_mysql(bits, acc) do
-    padding = rem(8 - bit_size(bits), 8)
-    << acc :: binary, 0 :: size(padding), reverse_bits(bits, "") :: bits >>
-  end
-
-  defp reverse_bits(<<>>, acc),
-    do: acc
-  defp reverse_bits(<<h::1, t::bits>>, acc),
-    do: reverse_bits(t, <<h::1, acc::bits>>)
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback,
