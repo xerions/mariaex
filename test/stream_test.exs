@@ -88,6 +88,30 @@ defmodule StreamTest do
     assert [[1, "foo"], [2, "bar"]] = execute(query, [])
   end
 
+  test "split on max_rows stream", context do
+    query = prepare("stream", "SELECT * FROM stream")
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      stream = DBConnection.stream(conn, query, [], [max_rows: 1])
+      assert [%Mariaex.Result{num_rows: 0, rows: []},
+              %Mariaex.Result{num_rows: 1, rows: [[1, "foo"]]},
+              %Mariaex.Result{num_rows: 1, rows: [[2, "bar"]]},
+              %Mariaex.Result{num_rows: 0, rows: []}] =
+        Enum.to_list(stream)
+      :done
+    end) == {:ok, :done}
+    assert [[1, "foo"], [2, "bar"]] = execute(query, [])
+  end
+
+  test "take first result with stream", context do
+    query = prepare("stream", "SELECT * FROM stream")
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      stream = DBConnection.stream(conn, query, [], [])
+      assert [%Mariaex.Result{num_rows: 0, rows: []}] = Enum.take(stream, 1)
+      :done
+    end) == {:ok, :done}
+    assert [[1, "foo"], [2, "bar"]] = execute(query, [])
+  end
+
   defp connect() do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     Mariaex.Connection.start_link(opts)
