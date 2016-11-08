@@ -223,7 +223,7 @@ defmodule Mariaex do
       Mariaex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Mariaex.Query.t, list, Keyword.t) ::
-    {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+    {:ok, Mariaex.Result.t} | {:ok, [Mariaex.Result.t]} | {:error, Mariaex.Error.t}
   def execute(conn, query, params, opts \\ []) do
     DBConnection.execute(conn, query, params, defaults(opts))
     |> arg_error_raiser
@@ -233,7 +233,7 @@ defmodule Mariaex do
   Runs an (extended) prepared query and returns the result or raises
   `Mariaex.Error` if there was an error. See `execute/4`.
   """
-  @spec execute!(conn, Mariaex.Query.t, list, Keyword.t) :: Mariaex.Result.t
+  @spec execute!(conn, Mariaex.Query.t, list, Keyword.t) :: Mariaex.Result.t | [Mariaex.Result.t]
   def execute!(conn, query, params, opts \\ []) do
     DBConnection.execute!(conn, query, params, defaults(opts))
   end

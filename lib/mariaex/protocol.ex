@@ -401,11 +401,25 @@ defmodule Mariaex.Protocol do
     s = if s.state_data == {0, 0}, do: %{s | catch_eof: true}, else: s
     text_query_recv(s, query)
   end
-  defp handle_text_query(packet(msg: eof_resp()), query, s = %{catch_eof: catch_eof}) do
+  defp handle_text_query(packet(msg: eof_resp()) = msg, query, s = %{catch_eof: catch_eof}) do
     if catch_eof do
       text_query_recv(%{s | state: :text_rows}, query)
     else
-      {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+      IO.inspect msg
+      {:packet, _, _, {:eof_resp, _, _, status_flags, _}, _} = msg
+      this_result = {%Mariaex.Result{rows: s.rows}, query.types}
+      if band(0x08, status_flags) === 0 do
+        {:ok, this_result, clean_state(s)}
+      else
+        case text_query_recv(%{s|state: :column_count, rows: [], state_data: nil}, %{query|types: []}) do
+          {:ok, res_list, new_state} when is_list(res_list) ->
+            {:ok, [this_result | res_list], new_state}
+          {:ok, res, new_state} ->
+            {:ok, [this_result, res], new_state}
+          other ->
+            other
+        end
+      end
     end
   end
   defp handle_text_query(packet(msg: text_row(row: row)), query, s = %{rows: acc}) do

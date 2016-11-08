@@ -147,6 +147,14 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
+  def decode(%Mariaex.Query{statement: statement, type: query_type} = query, res_list, opts) when is_list(res_list) do
+    res_list
+    |> Enum.map(fn result -> decode(query, result, opts) end)
+    |> case do # if only 1 result, destructure list
+      [x] -> x
+      xs -> xs
+    end
+  end
   def decode(%Mariaex.Query{statement: statement, type: query_type}, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
     if command in @commands_without_rows do
