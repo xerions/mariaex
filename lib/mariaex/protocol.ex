@@ -37,6 +37,9 @@ defmodule Mariaex.Protocol do
   @client_ps_multi_results  0x00040000
   @client_deprecate_eof     0x01000000
 
+  @server_status_cursor_exists 0x0040
+  @server_status_last_row_sent 0x0080
+
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
@@ -481,9 +484,9 @@ defmodule Mariaex.Protocol do
     cond do
       (command == :call) ->
         binary_query_recv(s, query)
-      (flags &&& 0x80) == 0x80  ->
+      (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
         {:done, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
-      (flags &&& 0x40) == 0x40 ->
+      (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
         {:more,  {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
       catch_eof ->
         binary_query_recv(%{s | catch_eof: false}, query)
