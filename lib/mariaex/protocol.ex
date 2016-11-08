@@ -651,7 +651,9 @@ defmodule Mariaex.Protocol do
     case binary_query_recv(%{state | state: :column_count}, query) do
       {:more, result, state} ->
         {:ok, result, state}
-      other ->
+      {:ok, result, state} ->
+        {:deallocate, result, state}
+      {error, _, _} = other when error in [:error, :disconnect] ->
         other
     end
   end

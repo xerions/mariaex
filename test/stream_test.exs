@@ -114,8 +114,8 @@ defmodule StreamTest do
 
   test "insert stream", context do
     assert Mariaex.transaction(context[:pid], fn(conn) ->
-      stream = Mariaex.stream(conn, "INSERT INTO stream VALUES (3, 'buzz')", [], [])
-      assert [%Mariaex.Result{num_rows: 1, rows: []}] = Enum.to_list(stream)
+      stream = Mariaex.stream(conn, "UPDATE stream SET text='foo' WHERE id=?", [1], [])
+      assert [%Mariaex.Result{num_rows: 1, rows: nil}] = Enum.to_list(stream)
       :done
     end) == {:ok, :done}
   end
