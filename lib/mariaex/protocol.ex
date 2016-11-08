@@ -55,7 +55,6 @@ defmodule Mariaex.Protocol do
             timeout: 0,
             lru_cache: nil,
             cache: nil,
-            cursors: %{},
             seqnum: 0,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
@@ -643,19 +642,15 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  def handle_first(query, %Cursor{statement_id: id, params: params} = cursor, _, state) do
+  def handle_first(query, %Cursor{statement_id: id, params: params}, _, state) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params,
     statement_id: id, flags: 1, iteration_count: 1), state, 0)
     case binary_query_recv(%{state | state: :column_count}, query) do
       {:more, result, state} ->
-        {:ok, result, put_cursor(state, cursor)}
+        {:ok, result, state}
       other ->
         other
     end
-  end
-
-  defp put_cursor(%{cursors: cursors} = state, %Cursor{ref: ref, statement_id: id}) do
-    %{state | cursors: Map.put(cursors, ref, id)}
   end
 
   def handle_next(query, %Cursor{statement_id: id, max_rows: max_rows}, _, state) do
@@ -670,16 +665,11 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  def handle_deallocate(%Query{type: :text}, _, _, state) do
+  def handle_deallocate(_, %Cursor{statement_id: :text}, _, state) do
     {:ok, nil, state}
   end
-  def handle_deallocate(query, %Cursor{statement_id: id, ref: ref}, _, %{cursors: cursors} = state) do
-    case Map.pop(cursors, ref) do
-      {^id, cursors} ->
-        deallocate(id, query, %{state | cursors: cursors})
-      {nil, _} ->
-        {:ok, nil, state}
-    end
+  def handle_deallocate(query, %Cursor{statement_id: id}, _, state) do
+    deallocate(id, query, state)
   end
 
   defp deallocate(id, query, state) do
