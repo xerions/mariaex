@@ -112,6 +112,14 @@ defmodule StreamTest do
     assert [[1, "foo"], [2, "bar"]] = execute(query, [])
   end
 
+  test "insert stream", context do
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      stream = Mariaex.stream(conn, "INSERT INTO stream VALUES (3, 'buzz')", [], [])
+      assert [%Mariaex.Result{num_rows: 1, rows: []}] = Enum.to_list(stream)
+      :done
+    end) == {:ok, :done}
+  end
+
   defp connect() do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     Mariaex.Connection.start_link(opts)
