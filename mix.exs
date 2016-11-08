@@ -4,7 +4,7 @@ defmodule Mariaex.Mixfile do
   def project do
     [app: :mariaex,
      version: "0.7.9",
-     elixir: "~> 1.0",
+     elixir: "~> 1.2",
      deps: deps(),
      name: "Mariaex",
      source_url: "https://github.com/liveforeverx/mariaex",
@@ -20,8 +20,8 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.0.0-rc"},
-     {:coverex, "~> 1.4.3", only: :test}]
+     {:db_connection, "~> 1.1"},
+     {:coverex, "~> 1.4.10", only: :test}]
   end
 
   defp description do

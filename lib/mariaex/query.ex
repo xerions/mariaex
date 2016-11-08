@@ -10,6 +10,7 @@ defmodule Mariaex.Query do
     * `result_formats` - List of formats for each column is decoded from;
     * `decoders` - List of anonymous functions to decode each column;
     * `types` - The type server table to fetch the type information from;
+    * `ref` - Reference that uniquely identifies when the query was prepared;
   """
 
   defstruct name: "",
@@ -17,10 +18,9 @@ defmodule Mariaex.Query do
             binary_as: nil,
             type: nil,
             statement: "",
-            statement_id: nil,
             parameter_types: [],
             types: [],
-            connection_ref: nil
+            ref: nil
 end
 
 defimpl DBConnection.Query, for: Mariaex.Query do
@@ -39,7 +39,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   This function is called to parse a query term before it is prepared.
   """
-  def parse(%{name: name, statement: statement} = query, _) do
+  def parse(%{name: name, statement: statement, ref: nil} = query, _) do
     %{query | name: IO.iodata_to_binary(name), statement: IO.iodata_to_binary(statement)}
   end
 

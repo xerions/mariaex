@@ -32,6 +32,7 @@ defmodule Mariaex do
   @pool_timeout 5000
   @timeout 5000
   @idle_timeout 5000
+  @max_rows 500
   ### PUBLIC API ###
 
   @doc """
@@ -239,6 +240,41 @@ defmodule Mariaex do
   end
 
   @doc """
+  Close a prepared a query and returns `:ok` or `{:error, %Mariaex.Error{}}` if
+  there was an error.
+
+  ## Options
+
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
+    * `:pool` - The pool module to use, must match that set on
+    `start_link/1`, see `DBConnection`
+
+  ## Examples
+
+      query = Mariaex.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
+      Mariaex.close(conn, query)
+  """
+  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  def close(conn, query, opts \\ []) do
+    case DBConnection.close(conn, query, defaults(opts)) do
+      {:ok, _} -> :ok
+      other    -> arg_error_raiser(other)
+    end
+  end
+
+  @doc """
+  Close a prepared query and returns `:ok` or raises
+  `Mariaex.Error` if there was an error. See `close/3`.
+  """
+  @spec close!(conn, Mariaex.Query.t, Keyword.t) :: :ok
+  def close!(conn, query, opts \\ []) do
+    DBConnection.close!(conn, query, defaults(opts))
+  end
+
+  @doc """
   Acquire a lock on a connection and run a series of requests inside a
   transaction. The result of the transaction fun is return inside an `:ok`
   tuple: `{:ok, result}`.
@@ -299,6 +335,32 @@ defmodule Mariaex do
   """
   @spec rollback(DBConnection.t, any) :: no_return()
   defdelegate rollback(conn, any), to: DBConnection
+
+  @doc """
+  Returns a stream for a query on a connection.
+
+  Streams read chunks of at most `max_rows` rows and can only be used inside a
+  transaction.
+
+  ### Options
+    * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
+
+      Mariaex.transaction(pid, fn(conn) ->
+        stream = Mariaex.stream(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
+        Enum.to_list(stream)
+      end)
+  """
+  @spec stream(DBConnection.t, iodata | Mariaex.Query.t, list, Keyword.t) ::
+    DBConnection.Stream.t
+  def stream(conn, query, params, opts \\ [])
+
+  def stream(conn, %Query{} = query, params, opts) do
+    DBConnection.stream(conn, query, params, opts)
+  end
+  def stream(conn, statement, params, opts) do
+    query = %Query{name: "", statement: statement}
+    DBConnection.prepare_stream(conn, query, params, opts)
+  end
 
   @doc """
   Returns a supervisor child specification for a DBConnection pool.

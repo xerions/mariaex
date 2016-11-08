@@ -163,7 +163,18 @@ defmodule Mariaex.Messages do
     parameters :string_eof
   end
 
+  defcoder :stmt_fetch do
+    command 1
+    statement_id 4
+    num_rows 4
+  end
+
   defcoder :stmt_close do
+    command 1
+    statement_id 4
+  end
+
+  defcoder :stmt_reset do
     command 1
     statement_id 4
   end
