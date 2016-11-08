@@ -405,9 +405,11 @@ defmodule Mariaex.Protocol do
     if catch_eof do
       text_query_recv(%{s | state: :text_rows}, query)
     else
-      IO.inspect msg
       {:packet, _, _, {:eof_resp, _, _, status_flags, _}, _} = msg
       this_result = {%Mariaex.Result{rows: s.rows}, query.types}
+      # The 0x08 status flag bit is the MORE_RESULTS_EXISTS flag, indicating
+      # there are additional result sets to read.
+      # see also https://dev.mysql.com/doc/internals/en/status-flags.html
       if band(0x08, status_flags) === 0 do
         {:ok, this_result, clean_state(s)}
       else
