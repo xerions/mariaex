@@ -40,7 +40,7 @@ defmodule Mariaex do
   ## Options
 
     * `:hostname` - Server hostname (default: MDBHOST env variable, then localhost);
-    * `:port` - Server port (default: 3306);
+    * `:port` - Server port (default: MDBPORT env var, then 3306);
     * `:sock_type` - Socket type (default: :tcp);
     * `:database` - Database (required, if `:skip_database` not true);
     * `:skip_database` - Flag to set connection without database;
