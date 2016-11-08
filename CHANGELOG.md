@@ -1,3 +1,11 @@
+# 0.7.9
+
+* Enhancements
+  * different performance optimization of query handling
+
+* Bug fixes
+  * fix truncate query
+
 # 0.7.8
 
 * Enhancements
