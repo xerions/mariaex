@@ -16,8 +16,8 @@ defmodule Mariaex.Cache do
 
   def lookup(cache, name) do
     case :ets.match(cache, {name, :"$1", :"$2"}) do
-      [[id, types]] ->
-        {id, types}
+      [[id, ref]] ->
+        {id, ref}
       [] ->
         nil
     end

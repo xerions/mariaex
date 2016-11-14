@@ -4,12 +4,7 @@ defmodule Mariaex.Query do
 
     * `name` - The name of the prepared statement;
     * `statement` - The prepared statement;
-    * `param_formats` - List of formats for each parameters encoded to;
-    * `encoders` - List of anonymous functions to encode each parameter;
-    * `columns` - The column names;
-    * `result_formats` - List of formats for each column is decoded from;
-    * `decoders` - List of anonymous functions to decode each column;
-    * `types` - The type server table to fetch the type information from;
+    * `num_params` - The number of parameters;
     * `ref` - Reference that uniquely identifies when the query was prepared;
   """
 
@@ -18,8 +13,7 @@ defmodule Mariaex.Query do
             binary_as: nil,
             type: nil,
             statement: "",
-            parameter_types: [],
-            types: [],
+            num_params: nil,
             ref: nil
 end
 
@@ -57,15 +51,15 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   This function is called to encode a query before it is executed.
   """
-  def encode(%Mariaex.Query{types: nil} = query, _params, _opts) do
+  def encode(%Mariaex.Query{ref: nil} = query, _params, _opts) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
-  def encode(%Mariaex.Query{type: :binary, parameter_types: parameter_types, binary_as: binary_as} = query, params, _opts) do
-    if length(params) == length(parameter_types) do
-      parameter_types |> Enum.zip(params) |> parameters_to_binary(binary_as)
-    else
-      raise ArgumentError, "parameters must be of length #{length params} for query #{inspect query}"
-    end
+  def encode(%Mariaex.Query{num_params: num_params} = query, params, _opts)
+      when length(params) != num_params do
+    raise ArgumentError, "parameters must be of length #{num_params} for query #{inspect query}"
+  end
+  def encode(%Mariaex.Query{type: :binary, binary_as: binary_as}, params, _opts) do
+    parameters_to_binary(params, binary_as)
   end
   def encode(%Mariaex.Query{type: :text}, params, _opts) do
     params
@@ -79,7 +73,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     << nullint :: size(nullbin_size)-little-unit(8), 1 :: 8, typesbin :: binary, valuesbin :: binary >>
   end
 
-  defp encode_params({_, param}, {nullint, idx, typesbin, valuesbin}, binary_as) do
+  defp encode_params(param, {nullint, idx, typesbin, valuesbin}, binary_as) do
     {nullvalue, type, value} = encode_param(param, binary_as)
 
     types_part = case type do
@@ -144,7 +138,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     else
       mapper = opts[:decode_mapper] || fn x -> x end
       %Mariaex.Result{rows: rows} = res
-      types = Enum.reverse(types)
       decoded = do_decode(rows, types, mapper)
       include_table_name = opts[:include_table_name]
       columns = for %Column{} = column <- types, do: column_name(column, include_table_name)

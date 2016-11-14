@@ -497,7 +497,7 @@ defmodule QueryTest do
   end
 
   test "encoding bad parameters", context do
-    assert %ArgumentError{message: "parameters must be of length 1 for query" <> _} = catch_error(query("SELECT 1", [:badparam]))
+    assert %ArgumentError{message: "parameters must be of length 0 for query" <> _} = catch_error(query("SELECT 1", [:badparam]))
     assert %ArgumentError{message: "query has invalid parameter :badparam"} = catch_error(query("SELECT ?", [:badparam]))
   end
 

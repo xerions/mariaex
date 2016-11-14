@@ -120,6 +120,33 @@ defmodule StreamTest do
     end) == {:ok, :done}
   end
 
+  test "select empty rows stream", context do
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      stream = Mariaex.stream(conn, "SELECT * FROM stream WHERE id=?", [42], [])
+      assert [%Mariaex.Result{num_rows: 0, rows: []},
+              %Mariaex.Result{num_rows: 0, rows: []}] = Enum.to_list(stream)
+      :done
+    end) == {:ok, :done}
+  end
+
+  test "call procedure stream", context do
+    sql =
+      """
+      CREATE PROCEDURE streamproc ()
+      BEGIN
+      SELECT * FROM stream;
+      END
+      """
+    assert :ok = query(sql, [])
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      stream = Mariaex.stream(conn, "CALL streamproc()", [], [])
+      assert [%Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}] = Enum.to_list(stream)
+
+      assert %Mariaex.Result{rows: [[42]]} = Mariaex.query!(conn, "SELECT 42", [])
+      :done
+    end) == {:ok, :done}
+  end
+
   defp connect() do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     Mariaex.Connection.start_link(opts)
