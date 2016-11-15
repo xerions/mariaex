@@ -3,25 +3,25 @@ defmodule Mariaex.Mixfile do
 
   def project do
     [app: :mariaex,
-     version: "0.6.2",
-     elixir: "~> 1.0",
-     deps: deps,
+     version: "0.7.9",
+     elixir: "~> 1.2",
+     deps: deps(),
      name: "Mariaex",
      source_url: "https://github.com/liveforeverx/mariaex",
      test_coverage: [tool: Coverex.Task, coveralls: true],
-     description: description,
-     package: package]
+     description: description(),
+     package: package()]
   end
 
   # Configuration for the OTP application
   def application do
-    [applications: [:logger, :decimal, :connection]]
+    [applications: [:logger, :crypto, :decimal, :db_connection]]
   end
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:connection, "~> 1.0.0"},
-     {:coverex, "~> 1.4.3", only: :test}]
+     {:db_connection, "~> 1.1"},
+     {:coverex, "~> 1.4.10", only: :test}]
   end
 
   defp description do
@@ -30,6 +30,7 @@ defmodule Mariaex.Mixfile do
 
   defp package do
     [maintainers: ["Dmitry Russ(Aleksandrov)"],
+     licenses: ["Apache 2.0"],
      links: %{"Github" => "https://github.com/xerions/mariaex"}]
   end
 end

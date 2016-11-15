@@ -16,19 +16,27 @@ defmodule Mariaex.Result do
     rows:     [tuple] | nil,
     last_insert_id: integer,
     num_rows: integer,
-    decoder: nil | [tuple] | :done}
+    connection_id: nil}
 
-  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :decoder]
+  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :connection_id]
 end
 
 defmodule Mariaex.Error do
-  defexception [:message, :mariadb]
+  defexception [:message, :tag, :action, :reason, :mariadb, :connection_id]
 
   def message(e) do
-    if kw = e.mariadb do
-      msg = "(#{kw[:code]}): #{kw[:message]}"
+    cond do
+      kw = e.mariadb ->
+        "(#{kw[:code]}): #{kw[:message]}"
+      tag = e.tag ->
+        "[#{tag}] `#{e.action}` failed with: #{inspect e.reason}"
+      true ->
+        e.message || ""
     end
-
-    msg || e.message
   end
+end
+
+defmodule Mariaex.Cursor do
+  @moduledoc false
+  defstruct [:ref, :statement_id, :params, max_rows: 0]
 end

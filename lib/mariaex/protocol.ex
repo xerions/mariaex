@@ -1,16 +1,23 @@
 defmodule Mariaex.Protocol do
   @moduledoc false
 
-  alias Mariaex.Connection
   alias Mariaex.Cache
+  alias Mariaex.LruCache
+  alias Mariaex.Query
+  alias Mariaex.Cursor
+  alias Mariaex.Column
   import Mariaex.Messages
+  import Mariaex.ProtocolHelper
 
+  use DBConnection
   use Bitwise
 
+  @reserved_prefix "MARIAEX_"
   @timeout 5000
   @keepalive_interval 60000
   @keepalive_timeout @timeout
   @cache_size 100
+  @max_rows 500
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
@@ -22,71 +29,174 @@ defmodule Mariaex.Protocol do
   @client_connect_with_db   0x00000008
   @client_local_files       0x00000080
   @client_protocol_41       0x00000200
+  @client_ssl               0x00000800
   @client_transactions      0x00002000
   @client_secure_connection 0x00008000
   @client_multi_statements  0x00010000
   @client_multi_results     0x00020000
+  @client_ps_multi_results  0x00040000
   @client_deprecate_eof     0x01000000
+
+  @server_status_cursor_exists 0x0040
+  @server_status_last_row_sent 0x0080
 
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
-                @client_deprecate_eof
+                @client_ps_multi_results  ||| @client_deprecate_eof
 
-  def init(opts) do
-    sock_mod   = Keyword.fetch!(opts, :sock_mod)
-    host       = Keyword.fetch!(opts, :hostname)
-    host       = if is_binary(host), do: String.to_char_list(host), else: host
-    port       = opts[:port] || 3306
-    timeout    = opts[:timeout] || @timeout
-    cache_size = opts[:cache_size] || @cache_size
-    keepalive  = {opts[:keepalive_interval] || @keepalive_interval,
-                  opts[:keepalive_timeout]  || @keepalive_timeout}
-    s = %{sock: nil, tail: "", state: nil, substate: nil, state_data: nil, parameters: %{},
-          catch_eof: false, protocol57: false,
-          backend_key: nil, sock_mod: sock_mod, seqnum: 0, rows: [], statement: nil, results: [],
-          parameter_types: [], types: [], queue: :queue.new, opts: opts, statement_id: nil, handshake: nil,
-          keepalive: keepalive, keepalive_send: nil, last_answer: nil, cache: Mariaex.Cache.new(cache_size)}
-    case sock_mod.connect(host, port, opts[:socket_options] || [], timeout) do
+  defstruct sock: nil,
+            state: nil,
+            state_data: nil,
+            protocol57: false,
+            binary_as: nil,
+            rows: [],
+            connection_id: nil,
+            opts: [],
+            catch_eof: false,
+            buffer: "",
+            timeout: 0,
+            lru_cache: nil,
+            cache: nil,
+            seqnum: 0,
+            ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
+
+  @doc """
+  DBConnection callback
+  """
+
+  def connect(opts) do
+    opts         = default_opts(opts)
+    sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
+    sock_mod     = Module.concat(Mariaex.Connection, sock_type)
+    host         = opts[:hostname]
+    host         = if is_binary(host), do: String.to_char_list(host), else: host
+    connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
+    binary_as    = opts[:binary_as] || :field_type_var_string
+
+    case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
-        s = %{s | state: :handshake, sock: {sock_mod, sock}}
-        connect(s, timeout)
+        s = %__MODULE__{binary_as: binary_as,
+                        state: :handshake,
+                        ssl_conn_state: set_initial_ssl_conn_state(opts),
+                        connection_id: self(),
+                        sock: {sock_mod, sock},
+                        cache: Cache.new(),
+                        lru_cache: LruCache.new(opts[:cache_size]),
+                        timeout: opts[:timeout],
+                        opts: opts}
+        handshake_recv(s, %{opts: opts})
       {:error, reason} ->
-        {:stop, %Mariaex.Error{message: "tcp connect: #{reason}"}}
+        {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
     end
   end
 
-  defp connect(state = %{opts: opts, sock: {sock_mod, sock}}, timeout) do
-    case passive_receive(state, timeout) do
-      {:error, error} ->
-        {:stop, error}
-      {:ok, state} ->
-        statement = "SET CHARACTER SET " <> (opts[:charset] || "utf8")
-        case send_text_query(state, statement) |> passive_receive(timeout) do
-          {:error, error} ->
-            {:stop, error}
-          {:ok, state} ->
-            sock_mod.next(sock)
-            {:ok, state}
-        end
+
+  defp default_opts(opts) do
+    opts
+    |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
+    |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
+    |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
+    |> Keyword.put_new(:port, System.get_env("MDBPORT") || 3306)
+    |> Keyword.put_new(:timeout, @timeout)
+    |> Keyword.put_new(:cache_size, @cache_size)
+    |> Keyword.put_new(:sock_type, :tcp)
+    |> Keyword.put_new(:socket_options, [])
+    |> Keyword.update!(:port, &normalize_port/1)
+    end
+
+  defp set_initial_ssl_conn_state(opts) do
+    if opts[:ssl] && has_ssl_opts?(opts[:ssl_opts]) do
+      :ssl_handshake
+    else
+      :not_used
     end
   end
 
-  defp passive_receive(s = %{state: state, substate: substate}, timeout) do
-    case msg_recv(s.sock, substate || state, timeout) do
-      {:ok, packet} ->
-        case dispatch(packet, s) do
-          {:error, error} ->
-            {:error, error}
-          state = %{state: new_state} ->
-            if new_state == :running do
-              {:ok, state}
-            else
-              passive_receive(state, timeout)
-            end
-        end
+  defp has_ssl_opts?(nil), do: false
+  defp has_ssl_opts?([]), do: false
+  defp has_ssl_opts?(ssl_opts) when is_list(ssl_opts), do: true
+
+  defp normalize_port(port) when is_binary(port), do: String.to_integer(port)
+  defp normalize_port(port) when is_integer(port), do: port
+
+  defp handshake_recv(state, request) do
+    case msg_recv(state) do
+      {:ok, packet, state} ->
+        handle_handshake(packet, request, state)
+      {:error, reason} ->
+        {sock_mod, _} = state.sock
+        Mariaex.Protocol.do_disconnect(state, {sock_mod.tag, "recv", reason, ""}) |> connected()
+    end
+  end
+
+  defp connected({:disconnect, error, state}) do
+    disconnect(error, state)
+    {:error, error}
+  end
+  defp connected(other), do: other
+
+  # request to communicate over an SSL connection
+  defp handle_handshake(packet(seqnum: seqnum) = packet, opts, %{ssl_conn_state: :ssl_handshake} = s) do
+    # Create and send an SSL request packet per the spec:
+    # https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
+    msg = ssl_connection_request(capability_flags: ssl_capabilities(opts), max_size: @maxpacketbytes, character_set: 8)
+    msg_send(msg, s, new_seqnum = seqnum + 1)
+    case upgrade_to_ssl(s, opts) do
+      {:ok, new_state} ->
+        # move along to the actual handshake; now over SSL/TLS
+        handle_handshake(packet(packet, seqnum: new_seqnum), opts, new_state)
       {:error, error} ->
         {:error, error}
+    end
+  end
+  defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
+    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
+    ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
+    ## In a phase of getting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
+    ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
+    ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
+    ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
+    ## Due to this, we need to difference server version.
+    protocol57 = get_3_digits_version(server_version) |> Version.match?("~> 5.7.5")
+    handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
+    scramble = case password = opts[:password] do
+      nil -> ""
+      ""  -> ""
+      _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
+    end
+    {database, capabilities} = capabilities(opts)
+    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
+                         database: database, capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8)
+    msg_send(msg, s, seqnum + 1)
+    handshake_recv(%{s | state: :handshake_send, protocol57: protocol57}, nil)
+  end
+  defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id) = _packet), nil, state) do
+    statement = "SET CHARACTER SET " <> (state.opts[:charset] || "utf8")
+    query = %Query{type: :text, statement: statement}
+    case send_text_query(state, statement) |> text_query_recv(query) do
+      {:error, error, _} ->
+        {:error, error}
+      {:ok, _, state} ->
+        activate(state, state.buffer) |> connected()
+    end
+  end
+  defp handle_handshake(packet, query, state) do
+    {:error, error, _} = handle_error(packet, query, state)
+    {:error, error}
+  end
+
+  defp upgrade_to_ssl(%{sock: {_sock_mod, sock}} = s, %{opts: opts}) do
+    ssl_opts = opts[:ssl_opts]
+    case :ssl.connect(sock, ssl_opts, opts[:timeout]) do
+      {:ok, ssl_sock} ->
+        # switch to the ssl connection module
+        # set the socket
+        # move ssl_conn_state to :connected
+        {:ok, %{s | sock: {Mariaex.Connection.Ssl, ssl_sock}, ssl_conn_state: :connected}}
+      {:error, reason} ->
+        {:error, %Mariaex.Error{message: "failed to upgraded socket: #{inspect reason}"}}
     end
   end
 
@@ -97,21 +207,596 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  def dispatch(packet(msg: ok_resp()), state = %{state: :ping}) do
-    Connection.pong(state) |> put_in([:state], :running)
+  defp ssl_capabilities(%{opts: opts}) do
+    case opts[:skip_database] do
+      true -> @capabilities ||| @client_ssl
+      _    -> @capabilities ||| @client_connect_with_db ||| @client_ssl
+    end
   end
 
-  def dispatch(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet, %{state: :handshake} = s) do
-    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
-    ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
-    ## In a phase of geting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
-    ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
-    ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
-    ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
-    ## Due to this, we need to difference server version.
-    protocol57 = get_3_digits_version(server_version) |> Version.match?("~> 5.7.5")
-    handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
-    authorization(plugin, %{s | protocol57: protocol57, handshake: %{salt: {salt1, salt2}, seqnum: seqnum}})
+  @doc """
+  DBConnection callback
+  """
+  def disconnect(_, state = %{sock: {sock_mod, sock}}) do
+    msg_send(text_cmd(command: com_quit(), statement: ""), state, 0)
+    case msg_recv(state) do
+      {:ok, packet(msg: ok_resp()), _state} ->
+        sock_mod.close(sock)
+      {:ok, packet(msg: _), _state} ->
+        sock_mod.close(sock)
+      {:error, _} ->
+        :ok
+    end
+    _ = sock_mod.recv_active(sock, 0, "")
+    :ok
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def checkout(%{buffer: :active_once, sock: {sock_mod, sock}} = s) do
+    case setopts(s, [active: :false], :active_once) do
+      :ok                       -> sock_mod.recv_active(sock, 0, "") |> handle_recv_buffer(s)
+      {:disconnect, _, _} = dis -> dis
+    end
+  end
+
+  defp handle_recv_buffer({:ok, buffer}, s) do
+    {:ok, %{s | buffer: buffer}}
+  end
+  defp handle_recv_buffer({:disconnect, description}, s) do
+    do_disconnect(s, description)
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def checkin(%{buffer: buffer} = s) when is_binary(buffer) do
+    activate(s, buffer)
+  end
+
+  ## Fake [active: once] if buffer not empty
+  defp activate(s, <<>>) do
+    case setopts(s, [active: :once], <<>>) do
+      :ok  -> {:ok, %{s | buffer: :active_once, state: :running}}
+      other -> other
+    end
+  end
+  defp activate(%{sock: {mod, sock}} = s, buffer) do
+    msg = mod.fake_message(sock, buffer)
+    send(self(), msg)
+    {:ok, %{s | buffer: :active_once, state: :running}}
+  end
+
+  defp setopts(%{sock: {mod, sock}} = s, opts, buffer) do
+    case mod.setopts(sock, opts) do
+      :ok ->
+        :ok
+      {:error, reason} ->
+        do_disconnect(s, {mod, "setopts", reason, buffer})
+    end
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
+    reserved_error(query, s)
+  end
+  def handle_prepare(%Query{type: nil, statement: statement} = query, opts, s) do
+    command = get_command(statement)
+    handle_prepare(%{query | type: request_type(command), binary_as: s.binary_as}, opts, s)
+  end
+  def handle_prepare(%Query{type: :text} = query, _, s) do
+    {:ok, query, s}
+  end
+  def handle_prepare(%Query{type: :binary} = query, _, s) do
+    case prepare_lookup(query, s) do
+      {:prepared, query} ->
+        {:ok, query, s}
+      {:prepare, query} ->
+        prepare(query, s)
+      {:close_prepare, id, query} ->
+        close_prepare(id, query, s)
+    end
+  end
+
+  defp request_type(command) do
+    if command in [:insert, :select, :update, :delete, :replace, :show, :call, :describe] do
+      :binary
+    else
+      :text
+    end
+  end
+
+  defp prepare_lookup(%Query{name: "", statement: statement} = query, %{lru_cache: cache}) do
+    case LruCache.types(cache, statement) || LruCache.garbage_collect(cache) do
+      {ref, {types, parameter_types}} ->
+        {:prepared, %{query | ref: ref, types: types, parameter_types: parameter_types}}
+      id when is_integer(id) ->
+        {:close_prepare, id, query}
+      nil ->
+        {:prepare, query}
+    end
+  end
+  defp prepare_lookup(%Query{name: name} = query, %{cache: cache}) do
+    case Cache.take(cache, name) do
+      id when is_integer(id) ->
+        {:close_prepare, id, query}
+      nil ->
+        {:prepare, query}
+    end
+  end
+
+  defp prepare(%Query{statement: statement} = query, s) do
+    msg_send(text_cmd(command: com_stmt_prepare(), statement: statement), s, 0)
+    prepare_recv(%{s | state: :prepare_send}, query)
+  end
+
+  defp close_prepare(id, %Query{statement: statement} = query, s) do
+    msgs = [stmt_close(command: com_stmt_close(), statement_id: id),
+            text_cmd(command: com_stmt_prepare(), statement: statement)]
+    msg_send(msgs, s, 0)
+    prepare_recv(%{s | state: :prepare_send}, query)
+  end
+
+  def_handle :prepare_recv, :handle_prepare_send
+  defp handle_prepare_send(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: 0, num_params: 0)), query, state) do
+    prepare_may_recv_more(%{state | state_data: {id, 0, 0}, catch_eof: false}, query)
+  end
+  defp handle_prepare_send(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), query, state) do
+    statedata = {id, columns, params}
+    prepare_may_recv_more(%{state | state: :column_definitions, catch_eof: not state.protocol57, state_data: statedata}, query)
+  end
+  defp handle_prepare_send(packet(msg: column_definition_41() = msg), query, state) do
+    query = add_column(query, msg)
+    {query, state} = count_down(query, state)
+    prepare_may_recv_more(state, query)
+  end
+  defp handle_prepare_send(packet(msg: eof_resp()), query, %{state_data: {_, 0, 0}} = state) do
+    prepare_may_recv_more(%{state | catch_eof: false}, query)
+  end
+  defp handle_prepare_send(packet(msg: eof_resp()), query, state) do
+    prepare_may_recv_more(state, query)
+  end
+  defp handle_prepare_send(packet, query, state), do: handle_error(packet, query, state)
+
+  defp prepare_may_recv_more(%{state_data: {id, 0, 0}, catch_eof: false} = state, query) do
+    {:ok, prepare_insert(id, query, state), clean_state(state)}
+  end
+  defp prepare_may_recv_more(state, query) do
+    prepare_recv(%{state | state: :column_definitions}, query)
+  end
+
+  defp prepare_insert(id, %Query{name: "", statement: statement, ref: ref, types: types, parameter_types: parameter_types} = query, %{lru_cache: cache}) do
+    ref = ref || make_ref()
+    true = LruCache.insert_new(cache, statement, id, ref, {types, parameter_types})
+    %{query | ref: ref}
+  end
+  defp prepare_insert(id, %Query{name: name, ref: ref} = query, %{cache: cache}) do
+    ref= ref || make_ref()
+    true = Cache.insert_new(cache, name, id, ref)
+    %{query | ref: ref}
+  end
+
+  defp count_down(query, s = %{state_data: {id, columns, params}}) when params > 1,
+    do: {query, %{s | state_data: {id, columns, params - 1}}}
+  defp count_down(query = %{types: definitions}, s = %{state_data: {id, columns, 1}}),
+    do: {%{query | types: [], parameter_types: Enum.reverse(definitions)}, %{s | state_data: {id, columns, 0}}}
+  defp count_down(query, s = %{state_data: {id, columns, 0}}),
+    do: {query, %{s | state_data: {id, columns - 1, 0}}}
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_execute(%Query{name: @reserved_prefix <> _, reserved?: false} = query, _, s) do
+    reserved_error(query, s)
+  end
+  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
+    send_text_query(state, statement) |> text_query_recv(query)
+  end
+  def handle_execute(%Query{type: :binary} = query, params, _, state) do
+    case execute_lookup(query, state) do
+      {:execute, id, query} ->
+        execute(id, query, params, state)
+      {:prepare_execute, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_execute(&prepare(prep, &1), query, params, state)
+      {:close_prepare_execute, id, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_execute(&close_prepare(id, prep, &1), query, params, state)
+    end
+  end
+  def handle_execute(query, params, _opts, state) do
+    query_error(state, "unsupported parameterized query #{inspect(query.statement)} parameters #{inspect(params)}")
+  end
+
+  defp execute_lookup(%Query{name: ""} = query, %{lru_cache: cache}) do
+    %Query{statement: statement, ref: ref} = query
+    case LruCache.lookup(cache, statement) || LruCache.garbage_collect(cache) do
+      {id, ^ref} ->
+        {:execute, id, query}
+      {id, _} ->
+        LruCache.delete(cache, statement)
+        {:close_prepare_execute, id, query}
+      id when is_integer(id) ->
+        {:close_prepare_execute, id, query}
+      nil ->
+        {:prepare_execute, query}
+    end
+  end
+  defp execute_lookup(%Query{name: name, ref: ref} = query, %{cache: cache}) do
+    case Cache.lookup(cache, name) do
+      {id, ^ref} ->
+        {:execute, id, query}
+      {id, _} ->
+        Cache.delete(cache, name)
+        {:close_prepare_execute, id, query}
+      nil ->
+        {:prepare_execute, query}
+    end
+  end
+
+  defp execute(id, query, params, state) do
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: 0, iteration_count: 1), state, 0)
+    binary_query_recv(%{state | state: :column_count}, query)
+  end
+
+  defp prepare_execute(prepare, query, params, state) do
+    %Query{types: types, parameter_types: parameter_types} = query
+    case prepare.(state) do
+      {:ok, %Query{types: ^types, parameter_types: ^parameter_types}, state} ->
+        id = prepare_execute_lookup(query, state)
+        execute(id, query, params, state)
+      {:ok, _, state} ->
+        stale_error(query, state)
+      {err, _, _} = error when err in [:error, :disconnect] ->
+        error
+    end
+  end
+
+  defp prepare_execute_lookup(%Query{name: "", statement: statement}, %{lru_cache: cache}) do
+    LruCache.id(cache, statement)
+  end
+  defp prepare_execute_lookup(%Query{name: name}, %{cache: cache}) do
+    Cache.id(cache, name)
+  end
+
+  def_handle :text_query_recv, :handle_text_query
+  defp handle_text_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
+  defp handle_text_query(packet, query, s), do: handle_error(packet, query, s)
+
+  defp handle_error(packet(msg: error_resp(error_code: code, error_message: message)), query, state) do
+    abort_statement(state, query, code, message)
+  end
+
+  def_handle :binary_query_recv, :handle_binary_query
+  defp handle_binary_query(packet(msg: column_count(column_count: count)), query, state) do
+    binary_query_recv(%{state | state: :column_definitions, state_data: {nil, count, 0}}, %{query | types: []})
+  end
+  defp handle_binary_query(packet(msg: column_definition_41() = msg), query, s) do
+    query = add_column(query, msg)
+    {query, s} = count_down(query, s)
+    s = if s.state_data == {nil, 0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
+    binary_query_recv(s, query)
+  end
+  defp handle_binary_query(packet(msg: eof_resp(status_flags: flags)), %{statement: statement} = query, s = %{catch_eof: catch_eof, state: :bin_rows}) do
+    command = get_command(statement)
+    cond do
+      (command == :call) ->
+        binary_query_recv(s, query)
+      (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
+        {:done, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+      (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
+        {:more,  {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+      catch_eof ->
+        binary_query_recv(%{s | catch_eof: false}, query)
+      true ->
+        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+    end
+  end
+  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s) do
+    binary_row_decode(%{s | buffer: :bin_rows}, query, [row], s.buffer)
+  end
+  defp handle_binary_query(packet(msg: eof_resp()), query, s) do
+    binary_query_recv(%{s | state: :bin_rows}, query)
+  end
+  defp handle_binary_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
+  defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
+
+  defp binary_row_decode(s, query, rows, buffer) do
+    case decode_bin_rows(buffer, rows) do
+      {:ok, packet, rows, rest} ->
+        handle_binary_query(packet, query, %{s | buffer: rest, rows: rows})
+      {:more, rows, rest} ->
+        binary_row_recv(s, query, rows, rest)
+    end
+  end
+
+  defp binary_row_recv(s, query, rows, buffer) do
+    %{sock: {sock_mod, sock}, timeout: timeout} = s
+    case sock_mod.recv(sock, 0, timeout) do
+      {:ok, data} when buffer == "" ->
+        binary_row_decode(s, query, rows, data)
+      {:ok, data} ->
+        binary_row_decode(s, query, rows, buffer <> data)
+      {:error, reason} ->
+        do_disconnect(%{s | buffer: buffer}, {sock_mod.tag, "recv", reason, ""})
+    end
+  end
+
+  defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
+    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
+  end
+
+  defp add_column(query, column_definition_41(type: type, name: name, flags: flags, table: table)) do
+    column = %Column{name: name, table: table, type: type, flags: flags}
+    %{query | types: [column | query.types]}
+  end
+
+  defp clean_state(state) do
+    %{state | state: :running, state_data: nil, rows: []}
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_close(%Query{name: @reserved_prefix <> _ , reserved?: false} = query, _, s) do
+    reserved_error(query, s)
+  end
+  def handle_close(%Query{type: :text}, _, s) do
+    {:ok, nil, s}
+  end
+  def handle_close(%Query{type: :binary} = query, _, s) do
+    case close_lookup(query, s) do
+      {:close, id} ->
+        msg_send(stmt_close(command: com_stmt_close(), statement_id: id), s, 0)
+        {:ok, nil, s}
+      :closed ->
+        {:ok, nil, s}
+    end
+  end
+
+  defp close_lookup(%Query{name: "", statement: statement}, %{lru_cache: cache}) do
+    case LruCache.take(cache, statement) do
+      id when is_integer(id) ->
+        {:close, id}
+      nil ->
+        :closed
+    end
+  end
+  defp close_lookup(%Query{name: name}, %{cache: cache}) do
+    case Cache.take(cache, name) do
+      id when is_integer(id) ->
+        {:close, id}
+      nil ->
+        :closed
+    end
+  end
+
+  def handle_declare(query, params, opts, state) do
+    case declare_lookup(query, state) do
+      {:declare, id} ->
+        declare(id, params, opts, state)
+      {:prepare_declare, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_declare(&prepare(prep, &1), query, params, opts, state)
+      {:close_prepare_execute, id, query} ->
+        prep = %Query{query | types: [], parameter_types: []}
+        prepare_declare(&close_prepare(id, prep, &1), query, params, opts, state)
+      {:text, _} ->
+        cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
+        {:ok, cursor, state}
+    end
+  end
+
+  defp declare_lookup(%Query{type: :text} = query, _), do: {:text, query}
+  defp declare_lookup(%Query{name: "", statement: statement} = query, %{lru_cache: cache}) do
+    case LruCache.take(cache, statement) do
+      id when is_integer(id) ->
+        {:declare, id}
+      nil ->
+        {:prepare_declare, query}
+    end
+  end
+  defp declare_lookup(%Query{name: name, ref: ref} = query, %{cache: cache}) do
+    case Cache.lookup(cache, name) do
+      {id, ^ref} ->
+        Cache.delete(cache, name)
+        {:declare, id}
+      {id, _} ->
+        Cache.delete(cache, name)
+        {:close_prepare_declare, id, query}
+      nil ->
+        {:prepare_declare, query}
+    end
+  end
+
+  defp declare(id, params, opts, state) do
+    max_rows = Keyword.get(opts, :max_rows, @max_rows)
+    cursor = %Cursor{statement_id: id, params: params, ref: make_ref(), max_rows: max_rows}
+    {:ok, cursor, state}
+  end
+
+  defp prepare_declare(prepare, query, params, opts, state) do
+    %Query{types: types, parameter_types: parameter_types} = query
+    case prepare.(state) do
+      {:ok, %Query{types: ^types, parameter_types: ^parameter_types}, state} ->
+        id = prepare_declare_lookup(query, state)
+        declare(id, params, opts, state)
+      {:ok, _, state} ->
+        stale_error(query, state)
+      {err, _, _} = error when err in [:error, :disconnect] ->
+        error
+    end
+  end
+
+  defp prepare_declare_lookup(%Query{name: "", statement: statement}, %{lru_cache: cache}) do
+    LruCache.take(cache, statement)
+  end
+  defp prepare_declare_lookup(%Query{name: name}, %{cache: cache}) do
+    Cache.take(cache, name)
+  end
+
+  def handle_first(query, %Cursor{statement_id: :text, params: params}, opts, state) do
+    case handle_execute(query, params, opts, state) do
+      {:ok, result, state} ->
+        {:deallocate, result, state}
+      other ->
+        other
+    end
+  end
+  def handle_first(query, %Cursor{statement_id: id, params: params}, _, state) do
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params,
+    statement_id: id, flags: 1, iteration_count: 1), state, 0)
+    case binary_query_recv(%{state | state: :column_count}, query) do
+      {:more, result, state} ->
+        {:ok, result, state}
+      {:ok, result, state} ->
+        {:deallocate, result, state}
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
+    end
+  end
+
+  def handle_next(query, %Cursor{statement_id: id, max_rows: max_rows}, _, state) do
+    msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
+    case binary_query_recv(%{state | state: :bin_rows}, query) do
+      {:more, result, state} ->
+        {:ok, result, state}
+      {:done, result, state} ->
+        {:deallocate, result, state}
+      {error, _, _} = other when error in [:error, :disconnect] ->
+        other
+    end
+  end
+
+  def handle_deallocate(_, %Cursor{statement_id: :text}, _, state) do
+    {:ok, nil, state}
+  end
+  def handle_deallocate(query, %Cursor{statement_id: id}, _, state) do
+    deallocate(id, query, state)
+  end
+
+  defp deallocate(id, query, state) do
+    case deallocate_insert(id, query, state) do
+      {:reset, reset_id, query} ->
+        msg = stmt_reset(command: com_stmt_reset(), statement_id: reset_id)
+        deallocate_send(msg, query, state)
+      {:close_reset, close_id, reset_id, query} ->
+        msgs = [stmt_close(command: com_stmt_close(), statement_id: close_id),
+                stmt_reset(command: com_stmt_reset(), statement_id: reset_id)]
+        deallocate_send(msgs, query, state)
+      {:close, close_id} ->
+        msg_send(stmt_close(command: com_stmt_close(), statement_id: close_id), state, 0)
+        {:ok, nil, state}
+    end
+  end
+
+  defp deallocate_insert(id, %Query{name: "", statement: statement, ref: ref, types: types, parameter_types: parameter_types} = query, %{lru_cache: cache}) do
+    case LruCache.insert_new(cache, statement, id, ref, {types, parameter_types}) do
+      true ->
+        case LruCache.garbage_collect(cache) do
+          close_id  when is_integer(close_id) ->
+            {:reset_close, id, query, close_id}
+          nil ->
+            {:reset, id, query}
+        end
+      false ->
+        {:close, id}
+    end
+  end
+  defp deallocate_insert(id, %Query{name: name, ref: ref} = query, %{cache: cache}) do
+    case Cache.insert_new(cache, name, id, ref) do
+      true ->
+        {:reset, id, query}
+      false ->
+        {:close, id}
+    end
+  end
+
+  defp deallocate_send(msg, query, state) do
+    msg_send(msg, state, 0)
+    handle_deallocate_recv(state, query)
+  end
+
+  def_handle :handle_deallocate_recv, :handle_deallocate_query
+  defp handle_deallocate_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
+  defp handle_deallocate_query(packet, query, s), do: handle_error(packet, query, s)
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_begin(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "BEGIN"
+        handle_transaction(name, :begin, opts, s)
+      :savepoint   ->
+        name = @reserved_prefix <> "SAVEPOINT mariaex_savepoint"
+        handle_savepoint([name], [:savepoint], opts, s)
+    end
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_commit(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "COMMIT"
+        handle_transaction(name, :commit, opts, s)
+      :savepoint ->
+        name = @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"
+        handle_savepoint([name], [:release], opts, s)
+    end
+  end
+
+  @doc """
+  DBConnection callback
+  """
+  def handle_rollback(opts, s) do
+    case Keyword.get(opts, :mode, :transaction) do
+      :transaction ->
+        name = @reserved_prefix <> "ROLLBACK"
+        handle_transaction(name, :rollback, opts, s)
+      :savepoint ->
+        names = [@reserved_prefix <> "ROLLBACK TO SAVEPOINT mariaex_savepoint",
+                 @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"]
+        handle_savepoint(names, [:rollback, :release], opts, s)
+    end
+  end
+
+  defp handle_transaction(name, cmd, opts, state) do
+    query = %Query{type: :text, name: name, statement: to_string(cmd), reserved?: true}
+    handle_execute(query, [], opts, state)
+  end
+
+  defp handle_savepoint(names, cmds, opts, state) do
+    Enum.zip(names, cmds) |> Enum.reduce({:ok, nil, state},
+      fn({@reserved_prefix <> name, _cmd}, {:ok, _, state}) ->
+        query = %Query{type: :text, name: @reserved_prefix <> name, statement: name}
+        case handle_execute(query, [], opts, state) do
+          {:ok, res, state} ->
+            {:ok, res, state}
+          other ->
+            other
+        end
+        ({_name, _cmd}, {:error, _, _} = error) ->
+          error
+    end)
+  end
+
+  @doc """
+  Do disconnect
+  """
+  def do_disconnect(s, {tag, action, reason, buffer}) do
+    err = Mariaex.Error.exception(tag: tag, action: action, reason: reason)
+    do_disconnect(s, err, buffer)
+  end
+
+  defp do_disconnect(%{connection_id: connection_id} = state, %Mariaex.Error{} = err, buffer) do
+    {:disconnect, %{err | connection_id: connection_id}, %{state | buffer: buffer}}
   end
 
   def dispatch(packet(msg: :mysql_old_password), state = %{opts: opts, handshake: handshake}) do
@@ -126,120 +811,6 @@ defmodule Mariaex.Protocol do
       {:error, %Mariaex.Error{message: "MySQL server is requesting the old and insecure pre-4.1 auth mechanism. " <>
                                        "Upgrade the user password or use the `insecure_auth: true` option."}}
     end
-  end
-
-  def dispatch(packet(msg: error_resp(error_code: code, error_message: message)), state = %{state: s})
-   when s in [:handshake_send, :query_send, :prepare_send, :prepare_send_2, :execute_send] do
-    abort_statement(state, code, message)
-  end
-
-  def dispatch(packet(msg: column_definition_41() = msg), s = %{types: acc, substate: :column_definitions}) do
-    column_definition_41(type: type, name: name, table: table) = msg
-    name = if s[:opts][:prepend_table] do
-      table <> "." <> name
-    else
-      name
-    end
-    %{ s | types: [{name, type} | acc] } |> count_down()
-  end
-
-  def dispatch(packet(msg: eof_resp() = _msg), s = %{state: state, substate: :column_definitions}) do
-    case state do
-      :execute_send ->
-        %{ s | state: :rows, substate: :bin_rows, catch_eof: not s.protocol57 }
-      _ ->
-        s
-    end
-  end
-
-  def dispatch(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state = %{statement: statement, state: s})
-   when s in [:handshake_send, :query_send, :execute_send] do
-    command = get_command(statement)
-    rows = if (command in [:create, :insert, :replace, :update, :delete, :begin, :commit, :rollback]) do nil else [] end
-    result = {:ok, %Mariaex.Result{command: command, columns: [], rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id, decoder: :done}}
-    {_, state} = Connection.reply(result, state)
-    %{ state | state: :running, substate: nil, statement_id: nil}
-  end
-
-  def dispatch(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), state = %{state: :prepare_send}) do
-    statedata = {columns, params}
-    switch_state(%{state | substate: :column_definitions, state_data: statedata, statement_id: id })
-  end
-
-  def dispatch(packet(msg: column_count(column_count: count)), state = %{state: s}) when s in [:query_send, :execute_send] do
-    %{ state | substate: :column_definitions, types: [], state_data: {0, count} }
-  end
-
-  def dispatch(packet(msg: bin_row(row: row)), state = %{state: :rows, rows: acc}) do
-    %{state | rows: [row | acc]}
-  end
-
-  def dispatch(packet(msg: msg), state = %{statement: statement, catch_eof: catch_eof, state: :rows})
-   when elem(msg, 0) in [:ok_resp, :eof_resp] do
-    cmd = get_command(statement)
-    case cmd do
-      :call when (elem(msg, 0) == :eof_resp) ->
-        %{state | state: :call_last_ok, substate: nil}
-      _ ->
-        case elem(msg, 0) do
-          :eof_resp when catch_eof -> %{state | catch_eof: false}
-          _                        -> result(state, cmd)
-        end
-    end
-  end
-
-  def dispatch(packet(msg: ok_resp()), state = %{state: :call_last_ok}) do
-    result(state, :call)
-  end
-
-  def dispatch(packet(msg: eof_resp()), state) do
-    state
-  end
-
-  defp count_down(s = %{state_data: {columns, params}}) when params > 1,
-    do: %{s | state_data: {columns, params - 1}}
-  defp count_down(s = %{state_data: {columns, 1}, types: definitions}),
-    do: %{s | parameter_types: Enum.reverse(definitions), state_data: {columns, 0}} |> switch_state
-  defp count_down(s = %{state_data: {columns, 0}}) when columns > 1,
-    do: %{s | state_data: {columns - 1, 0}}
-  defp count_down(s = %{state_data: {1, 0}}),
-    do: %{s | state_data: {0, 0}} |> switch_state
-
-  defp switch_state(s = %{state: state, state_data: state_data, substate: :column_definitions}) do
-    case state do
-      :prepare_send ->
-        case state_data do
-          {0, 0} ->
-            send_execute_new(s)
-          _ ->
-            s
-        end
-      :execute_send ->
-        %{ s | state: :rows, substate: :bin_rows, catch_eof: not s.protocol57 }
-    end
-  end
-
-  defp result(state = %{types: types, rows: rows}, cmd) do
-    result = %Mariaex.Result{command: cmd,
-                             rows: rows,
-                             decoder: types}
-    {_, state} = Connection.reply({:ok, result}, state)
-    %{ state | state: :running, substate: nil, statement_id: nil}
-  end
-
-  defp authorization(plugin, %{handshake: %{seqnum: seqnum, salt: {salt1, salt2}}, opts: opts} = s) do
-    password = opts[:password]
-    scramble = case password do
-      nil -> ""
-      ""  -> ""
-      _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
-    end
-    {database, capabilities} = capabilities(opts)
-    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: database, capability_flags: capabilities,
-                         max_size: @maxpacketbytes, character_set: 8)
-    msg_send(msg, s, seqnum + 1)
-    %{ s | state: :handshake_send }
   end
 
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
@@ -300,7 +871,6 @@ defmodule Mariaex.Protocol do
   end
 
   defp msg_send(msg, %{sock: {sock_mod, sock}}, seqnum), do: msg_send(msg, {sock_mod, sock}, seqnum)
-
   defp msg_send(msgs, {sock_mod, sock}, seqnum) when is_list(msgs) do
     binaries = Enum.reduce(msgs, [], &[&2 | encode(&1, seqnum)])
     sock_mod.send(sock, binaries)
@@ -311,108 +881,127 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  defp msg_recv({sock_mod, sock}, decode_state, timeout) do
-    case sock_mod.recv(sock, 4, timeout) do
-      {:ok, << len :: size(24)-little-integer, _seqnum :: size(8)-integer >> = header} ->
-        case sock_mod.recv(sock, len, timeout) do
-          {:ok, packet_body} ->
-            {packet, ""} = decode(header <> packet_body, decode_state)
-            {:ok, packet}
-          {:error, _} = error ->
-            error
-        end
-      {:error, _} = error ->
-        error
+  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state) do
+    msg_recv(sock_info, state, buffer)
+  end
+
+  defp msg_recv(sock, state, buffer) do
+    case msg_decode(buffer, state) do
+      {:ok, _packet, _new_state}=success ->
+        success
+
+      {:more, more} ->
+        msg_recv(sock, state, buffer, more)
+
+      {:error, _}=err ->
+        err
     end
   end
 
-  def ping(s) do
-    msg_send(text_cmd(command: com_ping, statement: ""), s, 0)
-    %{s | state: :ping}
+  defp msg_recv({sock_mod, sock}=s, state, buffer, more) do
+
+    case sock_mod.recv(sock, more, state.timeout) do
+      {:ok, data} when byte_size(data) < more ->
+        msg_recv(s, state, [buffer | data], more - byte_size(data))
+
+      {:ok, data} when is_binary(buffer) ->
+        msg_recv(s, state, buffer <> data)
+
+      {:ok, data} when is_list(buffer) ->
+        msg_recv(s, state, IO.iodata_to_binary([buffer | data]))
+
+      {:error, _} = err ->
+          err
+    end
   end
 
-  def send_query(statement, params, s) do
-    command = get_command(statement)
-    case command in [:insert, :select, :update, :delete, :replace, :show, :call, :describe] do
-      true ->
-        case Cache.lookup(s.cache, statement) do
-          {id, parameter_types} ->
-            Cache.update(s.cache, statement, {id, parameter_types})
-            send_execute(%{ s | statement_id: id, statement: statement, parameters: params,
-                                parameter_types: parameter_types, state: :prepare_send, rows: []})
-          nil ->
-            msg_send(text_cmd(command: com_stmt_prepare, statement: statement), s, 0)
-            %{s | statement: statement, parameters: params, parameter_types: [], types: [], state: :prepare_send, rows: []}
-        end
-      false when params == [] ->
-        send_text_query(s, statement)
-      false ->
-        {_, s} = Connection.reply({:error, %Mariaex.Error{message: "unsupported query"}}, s)
-        %{ s | state: :running, substate: nil}
+
+  def msg_decode(<< len :: size(24)-little-integer, _seqnum :: size(8)-integer, message :: binary>>=header, state) when byte_size(message) >= len do
+
+    {packet, rest} = decode(header, state.state)
+    {:ok, packet, %{state | buffer: rest}}
+  end
+
+  def msg_decode(_buffer, _state) do
+    {:more, 0}
+  end
+
+  def_handle :ping_recv, :ping_handle
+
+  @doc """
+  DBConnection callback
+  """
+  def ping(%{buffer: buffer} = state) when is_binary(buffer) do
+    msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
+    ping_recv(state, :ping)
+  end
+  def ping(state) do
+    case checkout(state) do
+      {:ok, state} ->
+        msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
+        {:ok, state} = ping_recv(state, :ping)
+        checkin(state)
+      disconnect ->
+        disconnect
     end
+  end
+
+  defp ping_handle(packet(msg: ok_resp()), :ping, %{buffer: buffer} = state) when is_binary(buffer) do
+    {:ok, state}
   end
 
   defp send_text_query(s, statement) do
-    msg_send(text_cmd(command: com_query, statement: statement), s, 0)
-    %{s | statement: statement, parameters: [], types: [], state: :query_send, substate: :column_count, rows: []}
+    msg_send(text_cmd(command: com_query(), statement: statement), s, 0)
+    %{s | state: :column_count}
   end
 
-  defp send_execute_new(s = %{statement: statement, statement_id: id, parameter_types: parameter_types, cache: cache, sock: sock}) do
-    Cache.insert(cache, statement, {id, parameter_types}, &close_statement(&1, &2, sock))
-    send_execute(s)
+  defp query_error(s, msg) do
+    {:error, ArgumentError.exception(msg), s}
   end
 
-  defp send_execute(s = %{statement_id: id, parameters: parameters, parameter_types: parameter_types}) do
-    if length(parameters) == length(parameter_types) do
-      parameters = Enum.zip(parameter_types, parameters)
-      try do
-        msg_send(stmt_execute(command: com_stmt_execute, parameters: parameters, statement_id: id), s, 0)
-        %{ s | state: :execute_send, substate: :column_count }
-      catch
-        :throw, :encoder_error ->
-          abort_statement(s, "query has invalid parameters")
-      end
-    else
-      abort_statement(s, "query has invalid number of parameters")
+  defp abort_statement(s, query, code, message) do
+    abort_statement(s, query, %Mariaex.Error{mariadb: %{code: code, message: message}})
+  end
+  defp abort_statement(s, query, error = %Mariaex.Error{}) do
+    case query do
+      %Query{} ->
+        {:ok, nil, s} = handle_close(query, [], s)
+        {:error, error, clean_state(s)}
+      nil ->
+        {:error, error, clean_state(s)}
     end
   end
 
-  defp abort_statement(s, code, message) do
-    abort_statement(s, %Mariaex.Error{mariadb: %{code: code, message: message}})
-  end
-  defp abort_statement(s, error = %Mariaex.Error{}) do
-    case Connection.reply({:error, error}, s) do
-      {true, s}  -> close_statement(s)
-      {false, _s} -> {:error, error}
-    end
-  end
-  defp abort_statement(s, error_msg) do
-    abort_statement(s, %Mariaex.Error{message: error_msg})
+  defp reserved_error(query, s) do
+    error = ArgumentError.exception("query #{inspect query} uses reserved name")
+    {:error, error, s}
   end
 
-  def close_statement(_statement, {id, _}, sock) do
-    msg_send(stmt_close(command: com_stmt_close, statement_id: id), sock, 0)
+  defp stale_error(query, s) do
+    {:ok, nil, s} = handle_close(query, [], s)
+    error = ArgumentError.exception("query #{inspect query} has stale types")
+    {:error, error, s}
   end
 
-  def close_statement(s = %{statement_id: nil}) do
-    %{ s | state: :running, substate: nil}
-  end
-  def close_statement(s = %{statement: statement, sock: sock, cache: cache}) do
-    Cache.delete(cache, statement, &close_statement(&1, &2, sock))
-    %{ s | state: :running, substate: nil, statement_id: nil}
-  end
-
-  defp get_command(statement) when is_binary(statement) do
+  @doc """
+  Get command from statement
+  """
+  def get_command(statement) when is_binary(statement) do
     statement |> :binary.split([" ", "\n"]) |> hd |> String.downcase |> String.to_atom
   end
-  defp get_command(nil), do: nil
+  def get_command(nil), do: nil
 
-  defp get_3_digits_version(server_version) do
-    server_version
-    |> String.split("-", parts: 2)
-    |> hd
-    |> String.split(".")
-    |> Enum.slice(0,3)
-    |> Enum.join(".")
+  def get_3_digits_version(string) do
+    [major, minor, rest] = String.split(string, ".", parts: 3)
+    bugfix = digits(rest)
+    "#{major}.#{minor}.#{bugfix}"
+  end
+
+  defp digits(string, acc \\ [])
+  defp digits(<<c, rest :: binary>>, acc) when c >= ?0 and c <= ?9 do
+    digits(rest, [c | acc])
+  end
+  defp digits(_, acc) do
+    acc |> Enum.reverse()
   end
 end

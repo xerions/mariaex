@@ -1,3 +1,76 @@
+# 0.7.9
+
+* Enhancements
+  * different performance optimization of query handling
+
+* Bug fixes
+  * fix truncate query
+
+# 0.7.8
+
+* Enhancements
+  * add tls support
+  * add option for switching, how strings are saved in database
+
+# 0.7.7
+
+* Enhancements
+  * do not checkout or activate on ping if buffer is full
+
+# 0.7.6
+
+* Enhancements
+  * normalize port, if it is given as string
+  * update to db_connection v1.0.0-rc
+
+* Bug fixes
+  * add missing crypto to dependencies
+
+# 0.7.5
+
+* Enhancements
+  * support writing of latin1 tables
+
+# 0.7.4
+
+* Bug fixes
+  * make function for getting formated version more robust to different formats
+
+# 0.7.3
+
+* Bug fixes
+  * clean state on end of execution
+
+# 0.7.2
+
+* Bug fixes
+  * fix backwards compatibility for ecto 1.1
+  * fix wrong handling of savepoint, extra prepare, execute command
+
+# 0.7.1
+
+* Bug fixes
+  * fix tcp connect lost handshake packet
+
+# 0.7.0
+
+* Enhancements
+  * reimplement protocol based on db_connection library
+  * add possibility to decode bits to support old type booleans
+
+* Bug fixes
+  * fix memory overconsuming
+
+# 0.6.4
+
+* Enhancements
+  * do not hold references to last executed query in a connection process
+
+# 0.6.3
+
+* Bug fixes
+  * remove compilation output, which accidental was there
+
 # 0.6.2
 
 * Bug fixes

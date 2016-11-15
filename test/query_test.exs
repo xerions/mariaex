@@ -3,13 +3,13 @@ defmodule QueryTest do
   import Mariaex.TestHelper
 
   setup do
-    opts = [ database: "mariaex_test", username: "root" ]
+    opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end
 
   test "simple query using password connection" do
-    opts = [ database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass" ]
+    opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass"]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
 
     context = [pid: pid]
@@ -22,19 +22,23 @@ defmodule QueryTest do
   end
 
   test "connection without database" do
-    opts = [ username: "mariaex_user", password: "mariaex_pass", skip_database: true ]
+    opts = [username: "mariaex_user", password: "mariaex_pass", skip_database: true]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
 
     context = [pid: pid]
 
     assert :ok = query("CREATE DATABASE database_from_connection", [])
-    assert [] = query("DROP DATABASE database_from_connection", [])
+    assert :ok = query("DROP DATABASE database_from_connection", [])
   end
 
   test "queries are dequeued after previous query is processed", context do
-    assert {:timeout, _} =
-           catch_exit(query("SLEEP(0.1", [], timeout: 0))
-    assert [[1]] = query("SELECT 1", [])
+    conn = context[:pid]
+
+    Process.flag(:trap_exit, true)
+    capture_log fn ->
+      assert %Mariaex.Error{} = query("DO SLEEP(0.1)", [], timeout: 0)
+      assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
+    end
   end
 
   test "support primitive data types using prepared statements", context do
@@ -64,15 +68,28 @@ defmodule QueryTest do
     assert query("SELECT data from #{table} WHERE id = LAST_INSERT_ID()", []) == [[binary]]
   end
 
-  test "booleen and tiny int tests", context do
+  test "boolean and tiny int tests", context do
     table = "boolean_test"
     :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint)", [])
 
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 127])
     :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, -128])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [3, false, -128])
 
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [[0, 127]]
     assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, -128]]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [3]) == [[0, -128]]
+  end
+
+  test "boolean and unsigned tiny int tests", context do
+    table = "boolean_test_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, active boolean, tiny tinyint unsigned)", [])
+
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [1, 0, 255])
+    :ok = query(~s{INSERT INTO #{table} (id, active, tiny) VALUES (?, ?, ?)}, [2, true, 0])
+
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [1]) == [[0, 255]]
+    assert query("SELECT active, tiny from #{table} WHERE id = ?", [2]) == [[1, 0]]
   end
 
   test "support numeric data types using prepared statements", context do
@@ -301,6 +318,22 @@ defmodule QueryTest do
     # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
   end
 
+  test "decode unsigned smallint", context do
+    table = "test_smallint_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield smallint UNSIGNED)", [])
+
+    max_unsigned = 65535
+    min_unsigned = 0
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_unsigned])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_unsigned])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_unsigned]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_unsigned]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
   test "decode mediumint", context do
     table = "test_mediumint"
     :ok = query("CREATE TABLE #{table} (id serial, testfield mediumint)", [])
@@ -314,6 +347,38 @@ defmodule QueryTest do
     # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
     assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_signed]]
     assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_signed]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
+  test "decode bigint", context do
+    table = "test_bigint"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield bigint)", [])
+
+    max_signed = 9223372036854775807
+    min_signed = -9223372036854775808
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_signed])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_signed])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_signed]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_signed]]
+    # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
+  end
+
+  test "decode unsigned bigint", context do
+    table = "test_bigint_unsigned"
+    :ok = query("CREATE TABLE #{table} (id serial, testfield bigint UNSIGNED)", [])
+
+    max_unsigned = 18446744073709551615
+    min_unsigned = 0
+    # out_of_range = max_signed + 1
+    :ok = query("INSERT INTO #{table} (id, testfield) values (1, ?)", [max_unsigned])
+    :ok = query("INSERT INTO #{table} (id, testfield) values (2, ?)", [min_unsigned])
+    # Do not work since MySQL 5.7.9, bit test is rather invalid
+    # :ok = query("INSERT INTO #{table} (id, testfield) values (3, ?)", [out_of_range])
+    assert query("SELECT testfield FROM #{table} WHERE id = 1", []) == [[max_unsigned]]
+    assert query("SELECT testfield FROM #{table} WHERE id = 2", []) == [[min_unsigned]]
     # assert query("SELECT testfield FROM #{table} WHERE id = 3", []) == [[max_signed]]
   end
 
@@ -338,6 +403,44 @@ defmodule QueryTest do
     assert res.command == :select
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
+  end
+
+  test "columns list includes table name when include_table_name option is specified", context do
+    table = "table_name_test"
+    :ok = query("CREATE TABLE #{table} (id serial, name varchar(50))", [])
+    :ok = query("INSERT INTO #{table} (id, name) VALUES(?, ?)", [1, "test_name"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT id, name FROM #{table}", [], include_table_name: true)
+
+    assert %Mariaex.Result{} = res
+    assert res.columns == ["#{table}.id", "#{table}.name"]
+  end
+
+  test "columns list on join associates columns with the correct table", context do
+    table1 = "table_name_test_1"
+    table2 = "table_name_test_2"
+    :ok = query("CREATE TABLE #{table1} (id serial, name varchar(50))", [])
+    :ok = query("CREATE TABLE #{table2} (id serial, table1_id integer, name varchar(50))", [])
+
+    :ok = query("INSERT INTO #{table1} (id, name) VALUES(?, ?)", [1, "test_name_1"])
+    :ok = query("INSERT INTO #{table2} (id, table1_id, name) VALUES(?, ?, ?)", [10, 1, "test_name_2"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM #{table1} JOIN #{table2} ON #{table1}.id = #{table2}.table1_id", [], include_table_name: true)
+
+    assert res.columns == ["#{table1}.id", "#{table1}.name", "#{table2}.id", "#{table2}.table1_id", "#{table2}.name"]
+    assert res.num_rows == 1
+    assert List.first(res.rows) == [1, "test_name_1", 10, 1, "test_name_2"]
+  end
+
+  test "columns list uses alias as table name when inclue_table_name option is specified", context do
+    table = "table_alias_test"
+    :ok = query("CREATE TABLE #{table} (id serial, name varchar(50))", [])
+    :ok = query("INSERT INTO #{table} (id, name) VALUES(?, ?)", [1, "test_name"])
+
+    {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT id, name FROM #{table} t1", [], include_table_name: true)
+
+    assert %Mariaex.Result{} = res
+    assert res.columns == ["t1.id", "t1.name"]
   end
 
   test "result struct on update", context do
@@ -394,8 +497,8 @@ defmodule QueryTest do
   end
 
   test "encoding bad parameters", context do
-    assert %Mariaex.Error{message: "query has invalid number of parameters"} = query("SELECT 1", [:badparam])
-    assert %Mariaex.Error{message: "query has invalid parameters"} = query("SELECT ?", [:badparam])
+    assert %ArgumentError{message: "parameters must be of length 1 for query" <> _} = catch_error(query("SELECT 1", [:badparam]))
+    assert %ArgumentError{message: "query has invalid parameter :badparam"} = catch_error(query("SELECT ?", [:badparam]))
   end
 
   test "non ascii character", context do
@@ -403,6 +506,13 @@ defmodule QueryTest do
     :ok = query("INSERT INTO test_charset VALUES (?, ?)", [1, "忍者"])
 
     assert query("SELECT * FROM test_charset where id = 1", []) == [[1, "忍者"]]
+  end
+
+  test "non ascii character to latin1 table", context do
+    :ok = query("CREATE TABLE test_charset_latin1 (id int, text text) DEFAULT CHARSET=latin1", [])
+    :ok = query("INSERT INTO test_charset_latin1 VALUES (?, ?)", [1, "ÖÄÜß"])
+
+    assert query("SELECT * FROM test_charset_latin1 where id = 1", []) == [[1, "ÖÄÜß"]]
   end
 
   test "test nullbit", context do
@@ -432,22 +542,10 @@ defmodule QueryTest do
   end
 
   test "test rare commands in prepared statements", context do
-    assert _ = query("SHOW FULL PROCESSLIST", [])
+    _ = query("SHOW FULL PROCESSLIST", [])
 
     :ok = query("CREATE TABLE test_describe (id int)", [])
     assert query("DESCRIBE test_describe", []) == [["id", "int(11)", "YES", "", nil, ""]]
-  end
-
-  test "multi row result struct with manual decoding", context do
-    assert :ok = query("CREATE TABLE test_manuall_decoding (id int, text text)", [])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [1, "test1"])
-    assert :ok = query("INSERT INTO test_manuall_decoding VALUES(?, ?)", [2, "test2"])
-    assert {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT * FROM test_manuall_decoding ORDER BY id", [], decode: :manual)
-
-    assert res.rows == [<<0, 0, 2, 0, 0, 0, 5, 116, 101, 115, 116, 50>>,
-                        <<0, 0, 1, 0, 0, 0, 5, 116, 101, 115, 116, 49>>]
-    assert [[1, "test1"], [2, "test2"]] == Mariaex.Connection.decode(res).rows
-    assert [[1], [2]] == Mariaex.Connection.decode(res, fn([id, _]) -> [id] end).rows
   end
 
   test "replace statement", context do
