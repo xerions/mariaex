@@ -1,3 +1,12 @@
+# 0.8.0
+
+* Enhancements
+  * add MDBPORT enviroment
+  * add streaming support
+
+* Backwards incompatible changes
+  * remove support of elixir < 1.2
+
 # 0.7.9
 
 * Enhancements
