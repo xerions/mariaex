@@ -37,8 +37,12 @@ defmodule Mariaex.Protocol do
   @client_ps_multi_results  0x00040000
   @client_deprecate_eof     0x01000000
 
+  @server_more_results_exists  0x0008
   @server_status_cursor_exists 0x0040
   @server_status_last_row_sent 0x0080
+
+  @cursor_type_no_cursor 0x00
+  @cursor_type_read_only 0x01
 
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
@@ -50,7 +54,6 @@ defmodule Mariaex.Protocol do
             state_data: nil,
             protocol57: false,
             binary_as: nil,
-            rows: [],
             connection_id: nil,
             opts: [],
             catch_eof: false,
@@ -58,6 +61,7 @@ defmodule Mariaex.Protocol do
             timeout: 0,
             lru_cache: nil,
             cache: nil,
+            cursors: %{},
             seqnum: 0,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
@@ -288,7 +292,7 @@ defmodule Mariaex.Protocol do
     handle_prepare(%{query | type: request_type(command), binary_as: s.binary_as}, opts, s)
   end
   def handle_prepare(%Query{type: :text} = query, _, s) do
-    {:ok, query, s}
+    {:ok, %Query{query | ref: make_ref(), num_params: 0}, s}
   end
   def handle_prepare(%Query{type: :binary} = query, _, s) do
     case prepare_lookup(query, s) do
@@ -310,9 +314,9 @@ defmodule Mariaex.Protocol do
   end
 
   defp prepare_lookup(%Query{name: "", statement: statement} = query, %{lru_cache: cache}) do
-    case LruCache.types(cache, statement) || LruCache.garbage_collect(cache) do
-      {ref, {types, parameter_types}} ->
-        {:prepared, %{query | ref: ref, types: types, parameter_types: parameter_types}}
+    case LruCache.lookup(cache, statement) || LruCache.garbage_collect(cache) do
+      {_id, ref, num_params} ->
+        {:prepared, %{query | ref: ref, num_params: num_params}}
       id when is_integer(id) ->
         {:close_prepare, id, query}
       nil ->
@@ -337,54 +341,64 @@ defmodule Mariaex.Protocol do
     msgs = [stmt_close(command: com_stmt_close(), statement_id: id),
             text_cmd(command: com_stmt_prepare(), statement: statement)]
     msg_send(msgs, s, 0)
-    prepare_recv(%{s | state: :prepare_send}, query)
+    prepare_recv(s, query)
   end
 
-  def_handle :prepare_recv, :handle_prepare_send
-  defp handle_prepare_send(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: 0, num_params: 0)), query, state) do
-    prepare_may_recv_more(%{state | state_data: {id, 0, 0}, catch_eof: false}, query)
-  end
-  defp handle_prepare_send(packet(msg: stmt_prepare_ok(statement_id: id, num_columns: columns, num_params: params)), query, state) do
-    statedata = {id, columns, params}
-    prepare_may_recv_more(%{state | state: :column_definitions, catch_eof: not state.protocol57, state_data: statedata}, query)
-  end
-  defp handle_prepare_send(packet(msg: column_definition_41() = msg), query, state) do
-    query = add_column(query, msg)
-    {query, state} = count_down(query, state)
-    prepare_may_recv_more(state, query)
-  end
-  defp handle_prepare_send(packet(msg: eof_resp()), query, %{state_data: {_, 0, 0}} = state) do
-    prepare_may_recv_more(%{state | catch_eof: false}, query)
-  end
-  defp handle_prepare_send(packet(msg: eof_resp()), query, state) do
-    prepare_may_recv_more(state, query)
-  end
-  defp handle_prepare_send(packet, query, state), do: handle_error(packet, query, state)
-
-  defp prepare_may_recv_more(%{state_data: {id, 0, 0}, catch_eof: false} = state, query) do
-    {:ok, prepare_insert(id, query, state), clean_state(state)}
-  end
-  defp prepare_may_recv_more(state, query) do
-    prepare_recv(%{state | state: :column_definitions}, query)
+  defp prepare_recv(state, query) do
+    case prepare_recv(state) do
+      {:prepared, id, num_params, state} ->
+        {:ok, prepare_insert(id, num_params, query, state), clean_state(state)}
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
   end
 
-  defp prepare_insert(id, %Query{name: "", statement: statement, ref: ref, types: types, parameter_types: parameter_types} = query, %{lru_cache: cache}) do
+  defp prepare_recv(state) do
+    state = %{state | state: :prepare_send}
+    with {:ok, packet(msg: stmt_prepare_ok(statement_id: id, num_columns: num_cols, num_params: num_params)), state} <- msg_recv(state),
+         {:eof, state} <- skip_definitions(state, num_params),
+         {:eof, state} <- skip_definitions(state, num_cols) do
+      {:prepared, id, num_params, state}
+    end
+  end
+
+  defp skip_definitions(state, 0), do: {:eof, state}
+  defp skip_definitions(state, count) do
+    do_skip_definitions(%{state | state: :column_definitions}, count)
+  end
+
+  defp do_skip_definitions(state, rem) when rem > 0 do
+    case msg_recv(state) do
+      {:ok, packet(msg: column_definition_41()), state} ->
+        do_skip_definitions(state, rem-1)
+      other ->
+        other
+    end
+  end
+  defp do_skip_definitions(%{protocol57: true} = state, 0) do
+    {:eof, state}
+  end
+  defp do_skip_definitions(%{protocol57: false} = state, 0) do
+    case msg_recv(state) do
+      {:ok, packet(msg: eof_resp()), state} ->
+        {:eof, state}
+      other ->
+        other
+    end
+  end
+
+  defp prepare_insert(id, num_params, %Query{name: "", statement: statement, ref: ref} = query, %{lru_cache: cache}) do
     ref = ref || make_ref()
-    true = LruCache.insert_new(cache, statement, id, ref, {types, parameter_types})
-    %{query | ref: ref}
+    true = LruCache.insert_new(cache, statement, id, ref, num_params)
+    %{query | ref: ref, num_params: num_params}
   end
-  defp prepare_insert(id, %Query{name: name, ref: ref} = query, %{cache: cache}) do
+  defp prepare_insert(id, num_params, %Query{name: name, ref: ref} = query, %{cache: cache}) do
     ref= ref || make_ref()
     true = Cache.insert_new(cache, name, id, ref)
-    %{query | ref: ref}
+    %{query | ref: ref, num_params: num_params}
   end
-
-  defp count_down(query, s = %{state_data: {id, columns, params}}) when params > 1,
-    do: {query, %{s | state_data: {id, columns, params - 1}}}
-  defp count_down(query = %{types: definitions}, s = %{state_data: {id, columns, 1}}),
-    do: {%{query | types: [], parameter_types: Enum.reverse(definitions)}, %{s | state_data: {id, columns, 0}}}
-  defp count_down(query, s = %{state_data: {id, columns, 0}}),
-    do: {query, %{s | state_data: {id, columns - 1, 0}}}
 
   @doc """
   DBConnection callback
@@ -400,11 +414,9 @@ defmodule Mariaex.Protocol do
       {:execute, id, query} ->
         execute(id, query, params, state)
       {:prepare_execute, query} ->
-        prep = %Query{query | types: [], parameter_types: []}
-        prepare_execute(&prepare(prep, &1), query, params, state)
+        prepare_execute(&prepare(query, &1), params, state)
       {:close_prepare_execute, id, query} ->
-        prep = %Query{query | types: [], parameter_types: []}
-        prepare_execute(&close_prepare(id, prep, &1), query, params, state)
+        prepare_execute(&close_prepare(id, query, &1), params, state)
     end
   end
   def handle_execute(query, params, _opts, state) do
@@ -414,9 +426,9 @@ defmodule Mariaex.Protocol do
   defp execute_lookup(%Query{name: ""} = query, %{lru_cache: cache}) do
     %Query{statement: statement, ref: ref} = query
     case LruCache.lookup(cache, statement) || LruCache.garbage_collect(cache) do
-      {id, ^ref} ->
+      {id, ^ref, _} ->
         {:execute, id, query}
-      {id, _} ->
+      {id, _, _} ->
         LruCache.delete(cache, statement)
         {:close_prepare_execute, id, query}
       id when is_integer(id) ->
@@ -438,18 +450,15 @@ defmodule Mariaex.Protocol do
   end
 
   defp execute(id, query, params, state) do
-    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: 0, iteration_count: 1), state, 0)
-    binary_query_recv(%{state | state: :column_count}, query)
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_no_cursor, iteration_count: 1), state, 0)
+    binary_query_recv(state, query)
   end
 
-  defp prepare_execute(prepare, query, params, state) do
-    %Query{types: types, parameter_types: parameter_types} = query
+  defp prepare_execute(prepare, params, state) do
     case prepare.(state) do
-      {:ok, %Query{types: ^types, parameter_types: ^parameter_types}, state} ->
+      {:ok, query, state} ->
         id = prepare_execute_lookup(query, state)
         execute(id, query, params, state)
-      {:ok, _, state} ->
-        stale_error(query, state)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -462,80 +471,127 @@ defmodule Mariaex.Protocol do
     Cache.id(cache, name)
   end
 
-  def_handle :text_query_recv, :handle_text_query
-  defp handle_text_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
-  defp handle_text_query(packet, query, s), do: handle_error(packet, query, s)
+  defp text_query_recv(state, query) do
+    case msg_recv(state) do
+      {:ok, packet(msg: ok_resp()) = packet, state} ->
+        handle_ok_packet(packet, query, state)
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
+  end
 
   defp handle_error(packet(msg: error_resp(error_code: code, error_message: message)), query, state) do
     abort_statement(state, query, code, message)
   end
 
-  def_handle :binary_query_recv, :handle_binary_query
-  defp handle_binary_query(packet(msg: column_count(column_count: count)), query, state) do
-    binary_query_recv(%{state | state: :column_definitions, state_data: {nil, count, 0}}, %{query | types: []})
-  end
-  defp handle_binary_query(packet(msg: column_definition_41() = msg), query, s) do
-    query = add_column(query, msg)
-    {query, s} = count_down(query, s)
-    s = if s.state_data == {nil, 0, 0}, do: %{s | state: :bin_rows, catch_eof: not s.protocol57}, else: s
-    binary_query_recv(s, query)
-  end
-  defp handle_binary_query(packet(msg: eof_resp(status_flags: flags)), %{statement: statement} = query, s = %{catch_eof: catch_eof, state: :bin_rows}) do
-    command = get_command(statement)
-    cond do
-      (command == :call) ->
-        binary_query_recv(s, query)
-      (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
-        {:done, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
-      (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
-        {:more,  {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
-      catch_eof ->
-        binary_query_recv(%{s | catch_eof: false}, query)
-      true ->
-        {:ok, {%Mariaex.Result{rows: s.rows}, query.types}, clean_state(s)}
+  defp binary_query_recv(state, query) do
+    case binary_query_recv(state) do
+      {:resultset, columns, bin_rows, flags, state} ->
+        binary_query_resultset(state, query, columns, bin_rows, flags)
+      {:ok, packet(msg: ok_resp()) = packet, state} ->
+        handle_ok_packet(packet, query, state)
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
     end
   end
-  defp handle_binary_query(packet(msg: bin_row(row: row)), query, s) do
-    binary_row_decode(%{s | buffer: :bin_rows}, query, [row], s.buffer)
-  end
-  defp handle_binary_query(packet(msg: eof_resp()), query, s) do
-    binary_query_recv(%{s | state: :bin_rows}, query)
-  end
-  defp handle_binary_query(packet(msg: ok_resp()) = packet, query, s), do: handle_ok_packet(packet, query, s)
-  defp handle_binary_query(packet, query, state), do: handle_error(packet, query, state)
 
-  defp binary_row_decode(s, query, rows, buffer) do
+  defp binary_query_recv(state) do
+    state = %{state | state: :column_count}
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
+         {:eof, columns, _, state} <- columns_recv(state, num_cols),
+         {:eof, bin_rows, flags, state} <- bin_rows_recv(state) do
+      {:resultset, columns, bin_rows, flags, state}
+    end
+  end
+
+  defp columns_recv(state, num_cols) do
+    columns_recv(%{state | state: :column_definitions}, num_cols, [])
+  end
+
+  defp columns_recv(state, rem, columns) when rem > 0 do
+    case msg_recv(state) do
+      {:ok, packet(msg: column_definition_41(type: type, name: name, flags: flags, table: table)), state} ->
+        column = %Column{name: name, table: table, type: type, flags: flags}
+        columns_recv(state, rem-1, [column | columns])
+      other ->
+        other
+    end
+  end
+  defp columns_recv(%{protocol57: true} = state, 0, columns) do
+    {:eof, Enum.reverse(columns), 0, state}
+  end
+  defp columns_recv(%{protocol57: false} = state, 0, columns) do
+    case msg_recv(state) do
+      {:ok, packet(msg: eof_resp(status_flags: flags)), state} ->
+        {:eof, Enum.reverse(columns), flags, state}
+      other ->
+        other
+    end
+  end
+
+  defp bin_rows_recv(%{buffer: buffer} = state) do
+    case binary_row_decode(%{state | buffer: :bin_rows}, [], buffer) do
+      {:ok, packet(msg: eof_resp(status_flags: flags)), rows, state} ->
+        {:eof, rows, flags, state}
+      {:ok, packet, _, state} ->
+        {:ok, packet, state}
+      other ->
+        other
+    end
+  end
+
+  defp binary_query_resultset(state, query, columns, rows, flags) do
+    cond do
+      (flags &&& @server_more_results_exists) == @server_more_results_exists ->
+        binary_query_more(state, query, columns, rows)
+      true ->
+        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+    end
+  end
+
+  defp binary_query_more(state, query, columns, rows) do
+    case msg_recv(state) do
+      {:ok, packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state} ->
+        result = %Mariaex.Result{rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}
+        {:ok, {result, columns}, clean_state(state)}
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
+  end
+
+  defp binary_row_decode(s, rows, buffer) do
     case decode_bin_rows(buffer, rows) do
       {:ok, packet, rows, rest} ->
-        handle_binary_query(packet, query, %{s | buffer: rest, rows: rows})
+        {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
-        binary_row_recv(s, query, rows, rest)
+        binary_row_recv(s, rows, rest)
     end
   end
 
-  defp binary_row_recv(s, query, rows, buffer) do
+  defp binary_row_recv(s, rows, buffer) do
     %{sock: {sock_mod, sock}, timeout: timeout} = s
     case sock_mod.recv(sock, 0, timeout) do
       {:ok, data} when buffer == "" ->
-        binary_row_decode(s, query, rows, data)
+        binary_row_decode(s, rows, data)
       {:ok, data} ->
-        binary_row_decode(s, query, rows, buffer <> data)
-      {:error, reason} ->
-        do_disconnect(%{s | buffer: buffer}, {sock_mod.tag, "recv", reason, ""})
+        binary_row_decode(s, rows, buffer <> data)
+      {:error, _} = error ->
+        error
     end
   end
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
-    {:ok, {%Mariaex.Result{columns: [], rows: s.rows, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
-  end
-
-  defp add_column(query, column_definition_41(type: type, name: name, flags: flags, table: table)) do
-    column = %Column{name: name, table: table, type: type, flags: flags}
-    %{query | types: [column | query.types]}
+    {:ok, {%Mariaex.Result{columns: [], rows: nil, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
   end
 
   defp clean_state(state) do
-    %{state | state: :running, state_data: nil, rows: []}
+    %{state | state: :running, state_data: nil}
   end
 
   @doc """
@@ -579,11 +635,9 @@ defmodule Mariaex.Protocol do
       {:declare, id} ->
         declare(id, params, opts, state)
       {:prepare_declare, query} ->
-        prep = %Query{query | types: [], parameter_types: []}
-        prepare_declare(&prepare(prep, &1), query, params, opts, state)
+        prepare_declare(&prepare(query, &1), params, opts, state)
       {:close_prepare_execute, id, query} ->
-        prep = %Query{query | types: [], parameter_types: []}
-        prepare_declare(&close_prepare(id, prep, &1), query, params, opts, state)
+        prepare_declare(&close_prepare(id, query, &1), params, opts, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
         {:ok, cursor, state}
@@ -618,14 +672,11 @@ defmodule Mariaex.Protocol do
     {:ok, cursor, state}
   end
 
-  defp prepare_declare(prepare, query, params, opts, state) do
-    %Query{types: types, parameter_types: parameter_types} = query
+  defp prepare_declare(prepare, params, opts, state) do
     case prepare.(state) do
-      {:ok, %Query{types: ^types, parameter_types: ^parameter_types}, state} ->
+      {:ok, query, state} ->
         id = prepare_declare_lookup(query, state)
         declare(id, params, opts, state)
-      {:ok, _, state} ->
-        stale_error(query, state)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -646,36 +697,90 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  def handle_first(query, %Cursor{statement_id: id, params: params}, _, state) do
-    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params,
-    statement_id: id, flags: 1, iteration_count: 1), state, 0)
-    case binary_query_recv(%{state | state: :column_count}, query) do
-      {:more, result, state} ->
-        {:ok, result, state}
-      {:ok, result, state} ->
+  def handle_first(query, %Cursor{statement_id: id, ref: ref, params: params}, _, state) do
+    msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_read_only, iteration_count: 1), state, 0)
+    binary_first_recv(state, ref, query)
+  end
+
+  defp binary_first_recv(state, ref, query) do
+    case binary_first_recv(state) do
+      {:eof, columns, flags, state} ->
+        binary_first_resultset(state, query, ref, columns, [], flags)
+      {:resultset, columns, rows, flags, state} ->
+        binary_first_resultset(state, query, ref, columns, rows, flags)
+      {:ok, packet(msg: ok_resp()) = packet, state} ->
+        {:ok, result, state} = handle_ok_packet(packet, query, state)
         {:deallocate, result, state}
-      {error, _, _} = other when error in [:error, :disconnect] ->
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
+  end
+
+  defp binary_first_recv(state) do
+    state = %{state | state: :column_count}
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
+         {:eof, columns, flags, state} when (flags &&& @server_status_cursor_exists) == 0 <- columns_recv(state, num_cols),
+         {:eof, bin_rows, flags, state} <- bin_rows_recv(state) do
+      {:resultset, columns, bin_rows, flags, state}
+    end
+  end
+
+  defp binary_first_resultset(state, query, ref, columns, rows, flags) do
+    cond do
+      (flags &&& @server_more_results_exists) == @server_more_results_exists ->
+        binary_first_more(state, query, columns, rows)
+      (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
+        %{cursors: cursors} = state
+        state = clean_state(%{state | cursors: Map.put(cursors, ref, columns)})
+        {:ok, {%Mariaex.Result{rows: rows}, columns}, state}
+      true ->
+        {:deallocate, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+    end
+  end
+
+  defp binary_first_more(state, query, columns, rows) do
+    case binary_query_more(state, query, columns, rows) do
+      {:ok, res, state} ->
+        {:deallocate, res, state}
+      other ->
         other
     end
   end
 
-  def handle_next(query, %Cursor{statement_id: id, max_rows: max_rows}, _, state) do
+  def handle_next(query, %Cursor{statement_id: id, ref: ref, max_rows: max_rows}, _, state) do
     msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
-    case binary_query_recv(%{state | state: :bin_rows}, query) do
-      {:more, result, state} ->
-        {:ok, result, state}
-      {:done, result, state} ->
-        {:deallocate, result, state}
-      {error, _, _} = other when error in [:error, :disconnect] ->
-        other
+    binary_next_recv(state, ref, query)
+  end
+
+  defp binary_next_recv(state, ref, query) do
+    case bin_rows_recv(state) do
+      {:eof, rows, flags, state} ->
+        binary_next_resultset(state, ref, rows, flags)
+      {:ok, packet, state} ->
+        handle_error(packet, query, state)
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
+  end
+
+  defp binary_next_resultset(%{cursors: cursors} = state, ref, rows, flags) do
+    columns = Map.fetch!(cursors, ref)
+    cond do
+      (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
+        {:deallocate, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+      (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
+        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
     end
   end
 
   def handle_deallocate(_, %Cursor{statement_id: :text}, _, state) do
     {:ok, nil, state}
   end
-  def handle_deallocate(query, %Cursor{statement_id: id}, _, state) do
-    deallocate(id, query, state)
+  def handle_deallocate(query, %Cursor{statement_id: id, ref: ref}, _, state) do
+    %{cursors: cursors} = state
+    deallocate(id, query, %{state | cursors: Map.delete(cursors, ref)})
   end
 
   defp deallocate(id, query, state) do
@@ -693,8 +798,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp deallocate_insert(id, %Query{name: "", statement: statement, ref: ref, types: types, parameter_types: parameter_types} = query, %{lru_cache: cache}) do
-    case LruCache.insert_new(cache, statement, id, ref, {types, parameter_types}) do
+  defp deallocate_insert(id, %Query{name: "", statement: statement, ref: ref, num_params: num_params} = query, %{lru_cache: cache}) do
+    case LruCache.insert_new(cache, statement, id, ref, num_params) do
       true ->
         case LruCache.garbage_collect(cache) do
           close_id  when is_integer(close_id) ->
@@ -785,6 +890,10 @@ defmodule Mariaex.Protocol do
         ({_name, _cmd}, {:error, _, _} = error) ->
           error
     end)
+  end
+
+  defp recv_error(reason, %{sock: {sock_mod, _}} = state) do
+    do_disconnect(state, {sock_mod.tag, "recv", reason, ""})
   end
 
   @doc """
@@ -974,12 +1083,6 @@ defmodule Mariaex.Protocol do
 
   defp reserved_error(query, s) do
     error = ArgumentError.exception("query #{inspect query} uses reserved name")
-    {:error, error, s}
-  end
-
-  defp stale_error(query, s) do
-    {:ok, nil, s} = handle_close(query, [], s)
-    error = ArgumentError.exception("query #{inspect query} has stale types")
     {:error, error, s}
   end
 

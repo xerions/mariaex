@@ -7,16 +7,6 @@ defmodule Mariaex.LruCache do
     {size, tab}
   end
 
-  def types({_, cache}, statement) do
-    case :ets.match(cache, {statement, :_, :_, :"$1", :"$2"}) do
-      [[ref, types]] ->
-        increment(cache, statement)
-        {ref, types}
-      [] ->
-        nil
-    end
-  end
-
   def id({_, cache}, statement) do
     try do
       :ets.lookup_element(cache, statement, 3)
@@ -27,10 +17,10 @@ defmodule Mariaex.LruCache do
   end
 
   def lookup({_, cache}, statement) do
-    case :ets.match(cache, {statement, :_, :"$1", :"$2", :_}) do
-      [[id, ref]] ->
+    case :ets.match(cache, {statement, :_, :"$1", :"$2", :"$3"}) do
+      [[id, ref, num_params]] ->
         increment(cache, statement)
-        {id, ref}
+        {id, ref, num_params}
       [] ->
         nil
     end
@@ -55,8 +45,8 @@ defmodule Mariaex.LruCache do
     end
   end
 
-  def insert_new({_, cache}, statement, id, ref, types) do
-    :ets.insert_new(cache, {statement, increment(cache), id, ref, types})
+  def insert_new({_, cache}, statement, id, ref, num_params) do
+    :ets.insert_new(cache, {statement, increment(cache), id, ref, num_params})
   end
 
   def delete({_, cache}, statement) do
@@ -64,11 +54,11 @@ defmodule Mariaex.LruCache do
   end
 
   defp take_oldest(cache) do
-    {statement, _, id, _} = :ets.foldl(fn(actual, nil) ->
-                                          actual
-                                         ({_, counter, _, _, _} = actual, {_, min, _, _, _} = acc) ->
-                                          if counter < min do actual else acc end
-                                      end, nil, cache)
+    {statement, _, id, _, _} = :ets.foldl(fn(actual, nil) ->
+                                             actual
+                                            ({_, counter, _, _, _} = actual, {_, min, _, _, _} = acc) ->
+                                             if counter < min do actual else acc end
+                                          end, nil, cache)
     :ets.delete(cache, statement)
     id
   end
