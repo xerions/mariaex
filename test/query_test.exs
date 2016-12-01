@@ -266,18 +266,21 @@ defmodule QueryTest do
     date = {2010, 10, 17}
     datetime = {date, {10, 10, 30, 0}}
     datetime_with_msec = {date, {13, 32, 15, 12}}
+    datetime_no_msec = {date, {10, 10, 29}}
     table = "test_datetimes"
 
-    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime)}
+    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime, dt3 datetime)}
     :ok = query(sql, [])
 
-    insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
-    :ok = query(insert, [1, datetime, datetime_with_msec])
+    insert = ~s{INSERT INTO #{table} (id, dt1, dt2, dt3) VALUES (?, ?, ?, ?)}
+    :ok = query(insert, [1, datetime, datetime_with_msec, datetime_no_msec])
 
     # Datetime
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
     assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [[datetime, {date, {13, 32, 15, 0}}]]
     assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [[datetime, {date, {13, 32, 15, 0}}]]
+    assert query("SELECT dt3 FROM #{table} WHERE id = ?", [1]) == [[{date, {10, 10, 29, 0}}]]
+    assert query("SELECT COUNT(*) FROM #{table} WHERE dt3 = ?", [datetime_no_msec]) == [[1]]
   end
 
   test "encode and decode timestamp", context do
