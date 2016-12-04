@@ -26,7 +26,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   import Mariaex.Coder.Utils
   alias Mariaex.Messages
   alias Mariaex.Column
-  alias Mariaex.RowParser
 
   @doc """
   Parse a query.
@@ -130,23 +129,20 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback,
                           :savepoint, :execute, :prepare, :truncate]
-  @unsigned_flag 0x20
 
-  def decode(_, %{rows: nil} = res, _), do: res
   def decode(%Mariaex.Query{statement: statement}, {res, nil}, _) do
     command = Mariaex.Protocol.get_command(statement)
     %Mariaex.Result{res | command: command, rows: nil}
   end
-  def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
+  def decode(%Mariaex.Query{statement: statement}, {res, columns}, opts) do
     command = Mariaex.Protocol.get_command(statement)
     if command in @commands_without_rows do
       %Mariaex.Result{res | command: command, rows: nil}
     else
-      mapper = opts[:decode_mapper] || fn x -> x end
       %Mariaex.Result{rows: rows} = res
-      decoded = do_decode(rows, types, mapper)
+      decoded = do_decode(rows, opts)
       include_table_name = opts[:include_table_name]
-      columns = for %Column{} = column <- types, do: column_name(column, include_table_name)
+      columns = for %Column{} = column <- columns, do: column_name(column, include_table_name)
       %Mariaex.Result{res | command: command,
                             rows: decoded,
                             columns: columns,
@@ -159,77 +155,21 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp column_name(%Column{name: name, table: table}, true), do: "#{table}.#{name}"
   defp column_name(%Column{name: name}, _), do: name
 
-  def do_decode(_, columns, mapper \\ fn x -> x end)
-  def do_decode(rows, columns, mapper) do
-    row_types = columns
-    |> Enum.map(fn(column) ->
-      Messages.__type__(:type, column.type)
-      |> type_to_atom(column.flags)
-    end)
-
-    nullbin_size = div(length(row_types) + 7 + 2, 8)
-
-    rows
-    |> Enum.reduce([], fn(row, acc) ->
-      decoded_row = row
-      |> RowParser.decode_bin_rows(row_types, nullbin_size)
-      |> mapper.()
-
-      [decoded_row | acc]
-    end)
+  defp do_decode(rows, opts) do
+    case Keyword.get(opts, :decode_mapper) do
+        nil ->
+          Enum.reverse(rows)
+        mapper when is_function(mapper, 1) ->
+          do_decode(rows, mapper, [])
+    end
   end
 
-  defp type_to_atom({:integer, :field_type_tiny}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    :uint8
+  defp do_decode([row | rows], mapper, acc) do
+    do_decode(rows, mapper, [mapper.(row) | acc])
   end
-
-  defp type_to_atom({:integer, :field_type_tiny}, _) do
-    :int8
+  defp do_decode([], _, acc) do
+    acc
   end
-
-  defp type_to_atom({:integer, :field_type_short}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    :uint16
-  end
-
-  defp type_to_atom({:integer, :field_type_short}, _) do
-    :int16
-  end
-
-  defp type_to_atom({:integer, :field_type_int24}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    :uint32
-  end
-
-  defp type_to_atom({:integer, :field_type_int24}, _) do
-    :int32
-  end
-
-  defp type_to_atom({:integer, :field_type_long}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    :uint32
-  end
-
-  defp type_to_atom({:integer, :field_type_long}, _) do
-    :int32
-  end
-
-  defp type_to_atom({:integer, :field_type_longlong}, flags) when (@unsigned_flag &&& flags) == @unsigned_flag do
-    :uint64
-  end
-
-  defp type_to_atom({:integer, :field_type_longlong}, _) do
-    :int64
-  end
-
-  defp type_to_atom({:string, _mysql_type}, _),              do: :string
-  defp type_to_atom({:integer, :field_type_year}, _),        do: :uint16
-  defp type_to_atom({:time, :field_type_time}, _),           do: :time
-  defp type_to_atom({:date, :field_type_date}, _),           do: :date
-  defp type_to_atom({:timestamp, :field_type_datetime}, _),  do: :datetime
-  defp type_to_atom({:timestamp, :field_type_timestamp}, _), do: :datetime
-  defp type_to_atom({:decimal, :field_type_newdecimal}, _),  do: :decimal
-  defp type_to_atom({:float, :field_type_float}, _),         do: :float32
-  defp type_to_atom({:float, :field_type_double}, _),        do: :float64
-  defp type_to_atom({:bit, :field_type_bit}, _),             do: :bit
-  defp type_to_atom({:null, :field_type_null}, _),           do: nil
 end
 
 defimpl String.Chars, for: Mariaex.Query do
