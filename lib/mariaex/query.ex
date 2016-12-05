@@ -118,6 +118,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
   defp encode_param({hour, min, sec, msec}, _binary_as),
     do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
+  defp encode_param({{year, month, day}, {hour, min, sec}}, _binary_as),
+    do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, 0}}, _binary_as),
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
