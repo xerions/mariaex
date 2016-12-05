@@ -54,7 +54,9 @@ defmodule Mariaex.LruCache do
   end
 
   defp take_oldest(cache) do
-    {statement, _, id, _, _} = :ets.foldl(fn(actual, nil) ->
+    {statement, _, id, _, _} = :ets.foldl(fn({:__counter__, _}, acc) ->
+                                             acc
+                                            (actual, nil) ->
                                              actual
                                             ({_, counter, _, _, _} = actual, {_, min, _, _, _} = acc) ->
                                              if counter < min do actual else acc end
