@@ -551,6 +551,34 @@ defmodule QueryTest do
     assert query("DESCRIBE test_describe", []) == [["id", "int(11)", "YES", "", nil, ""]]
   end
 
+  test "execute call procedure stream", context do
+    sql =
+      """
+      CREATE PROCEDURE queryproc (IN a INT, IN b INT)
+      BEGIN
+      SELECT a + b;
+      END
+      """
+    assert :ok = query(sql, [])
+    assert query("CALL queryproc(1, 2)", []) == [[3]]
+  end
+
+  test "execute call procedure stream without results", context do
+    assert :ok = query("CREATE TABLE test_command_proc (id int)", [])
+    assert :ok = query("INSERT INTO test_command_proc VALUES(1)", [])
+    assert query("SELECT COUNT(*) FROM test_command_proc", []) == [[1]]
+    sql =
+      """
+      CREATE PROCEDURE commandproc ()
+      BEGIN
+      DELETE FROM test_command_proc;
+      END
+      """
+    assert :ok = query(sql, [])
+    assert :ok = query("CALL commandproc()", [])
+    assert query("SELECT COUNT(*) FROM test_command_proc", []) == [[0]]
+  end
+
   test "replace statement", context do
     date = {2014, 8, 20}
     timestamp = {date, {18, 47, 42, 0}}

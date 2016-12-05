@@ -133,6 +133,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   @unsigned_flag 0x20
 
   def decode(_, %{rows: nil} = res, _), do: res
+  def decode(%Mariaex.Query{statement: statement}, {res, nil}, _) do
+    command = Mariaex.Protocol.get_command(statement)
+    %Mariaex.Result{res | command: command, rows: nil}
+  end
   def decode(%Mariaex.Query{statement: statement}, {res, types}, opts) do
     command = Mariaex.Protocol.get_command(statement)
     if command in @commands_without_rows do
