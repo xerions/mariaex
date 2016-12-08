@@ -1,3 +1,12 @@
+# 0.8.1
+
+* Enhancements
+  * better performance on decoding multiple raws
+  * add support for non-microsecond datetimes
+
+* Bug fixes
+  * fix error when executing a stored procedure that does not return any results
+
 # 0.8.0
 
 * Enhancements
