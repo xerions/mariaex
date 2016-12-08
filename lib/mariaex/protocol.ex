@@ -503,8 +503,8 @@ defmodule Mariaex.Protocol do
     state = %{state | state: :column_count}
     with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
          {:eof, columns, _, state} <- columns_recv(state, num_cols),
-         {:eof, bin_rows, flags, state} <- bin_rows_recv(state) do
-      {:resultset, columns, bin_rows, flags, state}
+         {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
+      {:resultset, columns, rows, flags, state}
     end
   end
 
@@ -533,8 +533,9 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp bin_rows_recv(%{buffer: buffer} = state) do
-    case binary_row_decode(%{state | buffer: :bin_rows}, [], buffer) do
+  defp bin_rows_recv(%{buffer: buffer} = state, columns) do
+    {fields, nullbin_size} = Mariaex.RowParser.decode_init(columns)
+    case binary_row_decode(%{state | buffer: :bin_rows}, fields, nullbin_size, [], buffer) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), rows, state} ->
         {:eof, rows, flags, state}
       {:ok, packet, _, state} ->
@@ -565,22 +566,22 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_row_decode(s, rows, buffer) do
-    case decode_bin_rows(buffer, rows) do
+  defp binary_row_decode(s, fields, nullbin_size, rows, buffer) do
+    case decode_bin_rows(buffer, fields, nullbin_size, rows) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
-        binary_row_recv(s, rows, rest)
+        binary_row_recv(s, fields, nullbin_size, rows, rest)
     end
   end
 
-  defp binary_row_recv(s, rows, buffer) do
+  defp binary_row_recv(s, fields, nullbin_size, rows, buffer) do
     %{sock: {sock_mod, sock}, timeout: timeout} = s
     case sock_mod.recv(sock, 0, timeout) do
       {:ok, data} when buffer == "" ->
-        binary_row_decode(s, rows, data)
+        binary_row_decode(s, fields, nullbin_size, rows, data)
       {:ok, data} ->
-        binary_row_decode(s, rows, buffer <> data)
+        binary_row_decode(s, fields, nullbin_size, rows, buffer <> data)
       {:error, _} = error ->
         error
     end
@@ -722,8 +723,8 @@ defmodule Mariaex.Protocol do
     state = %{state | state: :column_count}
     with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
          {:eof, columns, flags, state} when (flags &&& @server_status_cursor_exists) == 0 <- columns_recv(state, num_cols),
-         {:eof, bin_rows, flags, state} <- bin_rows_recv(state) do
-      {:resultset, columns, bin_rows, flags, state}
+         {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
+      {:resultset, columns, rows, flags, state}
     end
   end
 
@@ -754,10 +755,11 @@ defmodule Mariaex.Protocol do
     binary_next_recv(state, ref, query)
   end
 
-  defp binary_next_recv(state, ref, query) do
-    case bin_rows_recv(state) do
+  defp binary_next_recv(%{cursors: cursors} = state, ref, query) do
+    columns = Map.fetch!(cursors, ref)
+    case bin_rows_recv(state, columns) do
       {:eof, rows, flags, state} ->
-        binary_next_resultset(state, ref, rows, flags)
+        binary_next_resultset(state, columns, rows, flags)
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
@@ -765,8 +767,7 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_next_resultset(%{cursors: cursors} = state, ref, rows, flags) do
-    columns = Map.fetch!(cursors, ref)
+  defp binary_next_resultset(state, columns, rows, flags) do
     cond do
       (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
         {:deallocate, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
