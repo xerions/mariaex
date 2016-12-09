@@ -70,6 +70,17 @@ defmodule Mariaex.TestHelper do
     end
   end
 
+  defmacro execute_text(stat, params, opts \\ []) do
+    quote do
+      case Mariaex.execute(var!(context)[:pid], %Mariaex.Query{type: :text, statement: unquote(stat)},
+            unquote(params), unquote(opts)) do
+        {:ok, %Mariaex.Result{rows: nil}} -> :ok
+        {:ok, %Mariaex.Result{rows: rows}} -> rows
+        {:error, %Mariaex.Error{} = err} -> err
+      end
+    end
+  end
+
   defmacro with_prepare!(name, stat, params, opts \\ []) do
     quote do
       conn = var!(context)[:pid]
@@ -115,4 +126,9 @@ defmodule Mariaex.TestHelper do
     fun.()
     Logger.add_backend(:console, flush: true)
   end
+
+  def length_encode_row(row) do
+    Enum.map_join(row, &(<<String.length(&1)>> <> &1))
+  end
+
 end

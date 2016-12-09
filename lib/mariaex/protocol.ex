@@ -472,13 +472,57 @@ defmodule Mariaex.Protocol do
   end
 
   defp text_query_recv(state, query) do
-    case msg_recv(state) do
+    case text_query_recv(state) do
+      {:resultset, columns, rows, flags, state} ->
+        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         handle_ok_packet(packet, query, state)
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
         recv_error(reason, state)
+    end
+  end
+
+  defp text_query_recv(state) do
+    state = %{state | state: :column_count}
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
+         {:eof, columns, _, state} <- columns_recv(state, num_cols),
+         {:eof, rows, flags, state} <- text_rows_recv(state, columns) do
+      {:resultset, columns, rows, flags, state}
+    end
+  end
+
+  defp text_rows_recv(%{buffer: buffer} = state, columns) do
+    fields = Mariaex.RowParser.decode_text_init(columns)
+    case text_row_decode(%{state | buffer: :text_rows}, fields, [], buffer) do
+      {:ok, packet(msg: eof_resp(status_flags: flags)), rows, state} ->
+        {:eof, rows, flags, state}
+      {:ok, packet, _, state} ->
+        {:ok, packet, state}
+      other ->
+        other
+    end
+  end
+
+  defp text_row_decode(s, fields, rows, buffer) do
+    case decode_text_rows(buffer, fields, rows) do
+      {:ok, packet, rows, rest} ->
+        {:ok, packet, rows, %{s | buffer: rest}}
+      {:more, rows, rest} ->
+        text_row_recv(s, fields, rows, rest)
+    end
+  end
+
+  defp text_row_recv(s, fields, rows, buffer) do
+    %{sock: {sock_mod, sock}, timeout: timeout} = s
+    case sock_mod.recv(sock, 0, timeout) do
+      {:ok, data} when buffer == "" ->
+        text_row_decode(s, fields, rows, data)
+      {:ok, data} ->
+        text_row_decode(s, fields, rows, buffer <> data)
+      {:error, _} = error ->
+        error
     end
   end
 

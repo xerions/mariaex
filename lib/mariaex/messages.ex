@@ -187,6 +187,10 @@ defmodule Mariaex.Messages do
     row :string_eof
   end
 
+  defcoder :text_row do
+    row :string_eof
+  end
+
   defcoder :column_definition_41 do
     catalog   :length_encoded_string
     schema    :length_encoded_string
@@ -237,6 +241,21 @@ defmodule Mariaex.Messages do
     {:more, rows, rest}
   end
 
+  def decode_text_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>,
+                      fields, rows) do
+    case body do
+      << 254 :: 8, _ :: binary >> = body when byte_size(body) < 9 ->
+        msg = decode_msg(body, :text_rows)
+        {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
+      body ->
+        row = Mariaex.RowParser.decode_text_rows(body, fields)
+        decode_text_rows(rest, fields, [row | rows])
+    end
+  end
+  def decode_text_rows(<<rest :: binary>>, _fields, rows) do
+    {:more, rows, rest}
+  end
+
   defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :handshake),                                               do: __decode__(:handshake, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :bin_rows),                    do: __decode__(:bin_row, body)
@@ -244,6 +263,7 @@ defmodule Mariaex.Messages do
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, _),                            do: __decode__(:ok_resp, body)
   defp decode_msg(<< 254 >> = _body, _),                                           do: :mysql_old_password
   defp decode_msg(<< 254 :: 8, _ :: binary >> = body, _) when byte_size(body) < 9, do: __decode__(:eof_resp, body)
+  defp decode_msg(<< _ :: binary >> = body, :text_rows),                           do: __decode__(:text_row, body)
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
 end

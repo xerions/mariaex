@@ -50,10 +50,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   This function is called to encode a query before it is executed.
   """
-  def encode(%Mariaex.Query{ref: nil} = query, _params, _opts) do
+  def encode(%Mariaex.Query{ref: nil, type: :binary} = query, _params, _opts) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
-  def encode(%Mariaex.Query{num_params: num_params} = query, params, _opts)
+  def encode(%Mariaex.Query{type: :binary, num_params: num_params} = query, params, _opts)
       when length(params) != num_params do
     raise ArgumentError, "parameters must be of length #{num_params} for query #{inspect query}"
   end
@@ -157,10 +157,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   defp do_decode(rows, opts) do
     case Keyword.get(opts, :decode_mapper) do
-        nil ->
-          Enum.reverse(rows)
-        mapper when is_function(mapper, 1) ->
-          do_decode(rows, mapper, [])
+      nil ->
+        Enum.reverse(rows)
+      mapper when is_function(mapper, 1) ->
+        do_decode(rows, mapper, [])
     end
   end
 

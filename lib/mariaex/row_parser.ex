@@ -270,4 +270,86 @@ defmodule Mariaex.RowParser do
                        fields, null_bitfield, acc) do
     decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc])
   end
+
+  ### TEXT ROW PARSER
+
+  def decode_text_init(columns) do
+    for %Column{type: type, flags: flags} <- columns do
+      Messages.__type__(:type, type)
+      |> type_to_atom(flags)
+    end
+  end
+
+  def decode_text_rows(binary, fields) do
+    decode_text_part(binary, fields, [])
+  end
+
+  ### IMPLEMENTATION
+
+  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc) when len <= 250 do
+    decode_text_rows(string, rest, fields, acc)
+  end
+
+  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc) do
+    decode_text_rows(string, rest, fields, acc)
+  end
+
+  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc) do
+    decode_text_rows(string, rest, fields, acc)
+  end
+
+  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc) do
+    decode_text_rows(string, rest, fields, acc)
+  end
+
+  defp decode_text_part(<<>>, [], acc) do
+    Enum.reverse(acc)
+  end
+
+  defp decode_text_rows(string, rest, [:string | fields], acc) do
+    decode_text_part(rest, fields, [string | acc])
+  end
+
+  defp decode_text_rows(string, rest, [type | fields], acc)
+   when type in [:uint8, :int8, :uint16, :int16, :uint32, :int32, :uint64, :int64] do
+    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc])
+  end
+
+  defp decode_text_rows(string, rest, [type | fields], acc)
+   when type in [:float32, :float64, :decimal] do
+    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc])
+  end
+
+  defp decode_text_rows(string, rest, [:bit | fields], acc) do
+    decode_text_part(rest, fields, [string | acc])
+  end
+
+  defp decode_text_rows(string, rest, [:time | fields], acc) do
+    decode_text_time(string, rest, fields, acc)
+  end
+
+  defp decode_text_rows(string, rest, [:date | fields], acc) do
+    decode_text_date(string, rest, fields, acc)
+  end
+
+  defp decode_text_rows(string, rest, [:datetime | fields], acc) do
+    decode_text_datetime(string, rest, fields, acc)
+  end
+
+  defmacrop to_int(value) do
+    quote do: :erlang.binary_to_integer(unquote(value))
+  end
+
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc) do
+    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc])
+  end
+
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
+    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc])
+  end
+
+  defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
+    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc])
+  end
 end
