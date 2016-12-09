@@ -7,7 +7,6 @@ defmodule Mariaex do
   alias Mariaex.Query
 
   @timeout 5000
-  @keepalive false
 
   ## Helper to raise error
   defmacrop arg_error_raiser(result) do

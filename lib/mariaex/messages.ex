@@ -5,19 +5,21 @@ defmodule Mariaex.Messages do
   use Mariaex.Coder
   require Decimal
 
-  @protocol_vsn_major 3
-  @protocol_vsn_minor 0
+  # @protocol_vsn_major 3
+  # @protocol_vsn_minor 0
 
   defrecord :packet, [:size, :seqnum, :msg, :body]
 
 
   @auth_types [ ok: 0, kerberos: 2, cleartext: 3, md5: 5, scm: 6, gss: 7,
                 sspi: 9, gss_cont: 8 ]
+  _ = @auth_types # Drop warning for now
 
   @error_fields [ severity: ?S, code: ?C, message: ?M, detail: ?D, hint: ?H,
                   position: ?P, internal_position: ?p, internal_query: ?q,
                   where: ?W, schema: ?s, table: ?t, column: ?c, data_type: ?d,
                   constraint: ?n, file: ?F, line: ?L, routine: ?R ]
+  _ = @error_fields # Drop warning for now
 
   @commands [ com_sleep: 0x00, com_quit: 0x01, com_init_bd: 0x02,
               com_query: 0x03, com_field_list: 0x04, com_create_db: 0x05,
@@ -90,7 +92,7 @@ defmodule Mariaex.Messages do
     status_flags 2
     capability_flags_2 2
     # length_auth_plugin_data and the following ten bytes in the spec are rolled into the following field
-    auth_plugin_data2 :auth_plugin_data2  #max(13, length_auth_plugin_data - 8), :string
+    auth_plugin_data2 {__MODULE__, :auth_plugin_data2}
     plugin :string_eof
   end
 
@@ -266,4 +268,18 @@ defmodule Mariaex.Messages do
   defp decode_msg(<< _ :: binary >> = body, :text_rows),                           do: __decode__(:text_row, body)
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
+
+  @doc """
+  Decode auth plugin data2, which need some additional context checking.
+  """
+  def auth_plugin_data2(<< length_auth_plugin_data :: 8, _ :: 80, next :: binary >>) do
+    length = max(13, length_auth_plugin_data - 8)
+    length_nul_terminated = length - 1
+    << null_terminated? :: size(length)-binary, next :: binary >> = next
+    auth_plugin_data2 = case null_terminated? do
+                          << contents :: size(length_nul_terminated)-binary, 0 :: 8 >> -> contents
+                          contents -> contents
+                        end
+    {String.strip(auth_plugin_data2, 0), next}
+  end
 end

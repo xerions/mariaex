@@ -14,8 +14,6 @@ defmodule Mariaex.Protocol do
 
   @reserved_prefix "MARIAEX_"
   @timeout 5000
-  @keepalive_interval 60000
-  @keepalive_timeout @timeout
   @cache_size 100
   @max_rows 500
 
@@ -473,7 +471,7 @@ defmodule Mariaex.Protocol do
 
   defp text_query_recv(state, query) do
     case text_query_recv(state) do
-      {:resultset, columns, rows, flags, state} ->
+      {:resultset, columns, rows, _flags, state} ->
         {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         handle_ok_packet(packet, query, state)
