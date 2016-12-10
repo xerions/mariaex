@@ -1,7 +1,7 @@
 # 0.8.1
 
 * Enhancements
-  * better performance on decoding multiple raws
+  * better performance on decoding multiple rows
   * add support for non-microsecond datetimes
 
 * Bug fixes
