@@ -413,7 +413,7 @@ defmodule Mariaex.Protocol do
       if band(0x08, status_flags) === 0 do
         {:ok, this_result, clean_state(s)}
       else
-        case text_query_recv(%{s|state: :column_count, rows: [], state_data: nil}, %{query|types: []}) do
+        case text_query_recv(%{s|state: :column_count, rows: [], state_data: nil, catch_eof: true}, %{query|types: []}) do
           {:ok, res_list, new_state} when is_list(res_list) ->
             {:ok, [this_result | res_list], new_state}
           {:ok, res, new_state} ->
