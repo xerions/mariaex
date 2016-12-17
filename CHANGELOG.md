@@ -166,7 +166,7 @@
   * allow saving dates, that have year less as 1000, due time is another format as date
 
 * Backwards incompatible changes
-  * tiny integers are no more automaticly decoded as booleans
+  * tiny integers are no more automatically decoded as booleans
 
 # 0.2.2
 
