@@ -153,7 +153,7 @@ defmodule Mariaex.Protocol do
     end
   end
   defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
-    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to asume this or test it with versions 5.7.X, where X < 5),
+    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to assume this or test it with versions 5.7.X, where X < 5),
     ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
     ## In a phase of getting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
     ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
