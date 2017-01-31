@@ -128,7 +128,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
                           :alter, :rename, :drop, :begin, :commit, :rollback,
-                          :savepoint, :execute, :prepare, :truncate]
+                          :savepoint, :execute, :prepare, :truncate, :grant]
 
   def decode(%Mariaex.Query{statement: statement}, {res, nil}, _) do
     command = Mariaex.Protocol.get_command(statement)
