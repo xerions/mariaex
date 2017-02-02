@@ -71,8 +71,7 @@ defmodule Mariaex.Protocol do
     opts         = default_opts(opts)
     sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
     sock_mod     = Module.concat(Mariaex.Connection, sock_type)
-    host         = opts[:hostname]
-    host         = if is_binary(host), do: String.to_char_list(host), else: host
+    host         = opts[:hostname] |> parse_host
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
 
@@ -105,7 +104,18 @@ defmodule Mariaex.Protocol do
     |> Keyword.put_new(:sock_type, :tcp)
     |> Keyword.put_new(:socket_options, [])
     |> Keyword.update!(:port, &normalize_port/1)
+  end
+
+  defp parse_host(host) do
+    host = if is_binary(host), do: String.to_char_list(host), else: host
+
+    case :inet.parse_strict_address(host) do
+      {:ok, address} ->
+        address
+      _ ->
+        host
     end
+  end
 
   defp set_initial_ssl_conn_state(opts) do
     if opts[:ssl] && has_ssl_opts?(opts[:ssl_opts]) do
