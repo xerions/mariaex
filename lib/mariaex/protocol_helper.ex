@@ -6,8 +6,8 @@ defmodule Mariaex.ProtocolHelper do
   """
   defmacro def_handle(recv_func, handle_func) do
     quote do
-      defp unquote(recv_func)(state, request) do
-        case msg_recv(state) do
+      defp unquote(recv_func)(state, timeout, request) do
+        case msg_recv(state, timeout) do
           {:ok, packet, state} ->
             unquote(handle_func)(packet, request, state)
           {:error, reason} ->

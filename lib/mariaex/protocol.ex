@@ -152,7 +152,7 @@ defmodule Mariaex.Protocol do
   defp normalize_port(port) when is_integer(port), do: port
 
   defp handshake_recv(state, request) do
-    case msg_recv(state) do
+    case msg_recv(state, state.timeout) do
       {:ok, packet, state} ->
         handle_handshake(packet, request, state)
       {:error, reason} ->
@@ -894,7 +894,7 @@ defmodule Mariaex.Protocol do
 
   defp deallocate_send(msg, query, state) do
     msg_send(msg, state, 0)
-    handle_deallocate_recv(state, query)
+    handle_deallocate_recv(state, :infinity, query)
   end
 
   def_handle :handle_deallocate_recv, :handle_deallocate_query
@@ -1062,34 +1062,34 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state) do
-    msg_recv(sock_info, state, buffer)
+  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state, timeout \\ :infinity) do
+    msg_recv(sock_info, state, timeout, buffer)
   end
 
-  defp msg_recv(sock, state, buffer) do
+  defp msg_recv(sock, state, timeout, buffer) do
     case msg_decode(buffer, state) do
       {:ok, _packet, _new_state}=success ->
         success
 
       {:more, more} ->
-        msg_recv(sock, state, buffer, more)
+        msg_recv(sock, state, timeout, buffer, more)
 
       {:error, _}=err ->
         err
     end
   end
 
-  defp msg_recv({sock_mod, sock}=s, state, buffer, more) do
+  defp msg_recv({sock_mod, sock}=s, state, timeout, buffer, more) do
 
-    case sock_mod.recv(sock, more, state.timeout) do
+    case sock_mod.recv(sock, more, timeout) do
       {:ok, data} when byte_size(data) < more ->
-        msg_recv(s, state, [buffer | data], more - byte_size(data))
+        msg_recv(s, state, timeout, [buffer | data], more - byte_size(data))
 
       {:ok, data} when is_binary(buffer) ->
-        msg_recv(s, state, buffer <> data)
+        msg_recv(s, state, timeout, buffer <> data)
 
       {:ok, data} when is_list(buffer) ->
-        msg_recv(s, state, IO.iodata_to_binary([buffer | data]))
+        msg_recv(s, state, timeout, IO.iodata_to_binary([buffer | data]))
 
       {:error, _} = err ->
           err
@@ -1114,13 +1114,13 @@ defmodule Mariaex.Protocol do
   """
   def ping(%{buffer: buffer} = state) when is_binary(buffer) do
     msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
-    ping_recv(state, :ping)
+    ping_recv(state, state.timeout, :ping)
   end
   def ping(state) do
     case checkout(state) do
       {:ok, state} ->
         msg_send(text_cmd(command: com_ping(), statement: ""), state, 0)
-        {:ok, state} = ping_recv(state, :ping)
+        {:ok, state} = ping_recv(state, state.timeout, :ping)
         checkin(state)
       disconnect ->
         disconnect
