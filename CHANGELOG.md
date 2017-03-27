@@ -1,3 +1,11 @@
+# 0.8.2
+
+* Enhancements
+  * remove warnings for elixir v1.4
+
+* Bug fixes
+  * fix some bugs on reconnection
+
 # 0.8.1
 
 * Enhancements
