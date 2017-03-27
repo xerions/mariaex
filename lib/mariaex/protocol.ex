@@ -82,14 +82,33 @@ defmodule Mariaex.Protocol do
                         ssl_conn_state: set_initial_ssl_conn_state(opts),
                         connection_id: self(),
                         sock: {sock_mod, sock},
-                        cache: Cache.new(),
-                        lru_cache: LruCache.new(opts[:cache_size]),
+                        cache: reset_cache(),
+                        lru_cache: reset_lru_cache(opts[:cache_size]),
                         timeout: opts[:timeout],
                         opts: opts}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
     end
+  end
+
+  def reset_cache do
+    cache = Cache.new()
+    case Process.put(:cache, cache) do
+      nil -> nil
+      tab -> :ets.delete(tab)
+    end
+    cache
+
+  end
+
+  def reset_lru_cache(cache_size) do
+    lru_cache = LruCache.new(cache_size)
+    case Process.put(:lru_cache, lru_cache) do
+      nil -> nil
+      {_size, tab} -> :ets.delete(tab)
+    end
+    lru_cache
   end
 
 
