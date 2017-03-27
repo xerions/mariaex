@@ -855,8 +855,8 @@ defmodule Mariaex.Protocol do
     case LruCache.insert_new(cache, statement, id, ref, num_params) do
       true ->
         case LruCache.garbage_collect(cache) do
-          close_id  when is_integer(close_id) ->
-            {:reset_close, id, query, close_id}
+          close_id when is_integer(close_id) ->
+            {:close_reset, close_id, id, query}
           nil ->
             {:reset, id, query}
         end
