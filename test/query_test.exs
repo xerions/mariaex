@@ -293,7 +293,10 @@ defmodule QueryTest do
     timestamp_with_msec = {date, {13, 32, 15, 12}}
     table = "test_timestamps"
 
-    sql = "CREATE TABLE #{table} (id int, ts1 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, ts2 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);"
+    # MySQL 5.7 requests explicit defaults for timestamp.
+    # ref. https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_explicit_defaults_for_timestamp
+    # There can be only one timestamp column with CURRENT_TIMESTAMP in default, so ts2 default value set to 2000-01-01 00:00:00
+    sql = "CREATE TABLE #{table} (id int, ts1 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, ts2 timestamp NOT NULL DEFAULT '2000-01-01 00:00:00');"
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
