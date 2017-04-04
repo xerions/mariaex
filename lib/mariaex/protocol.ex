@@ -207,7 +207,7 @@ defmodule Mariaex.Protocol do
   defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id) = _packet), nil, state) do
     statement = "SET CHARACTER SET " <> (state.opts[:charset] || "utf8")
     query = %Query{type: :text, statement: statement}
-    case send_text_query(state, statement) |> text_query_recv(query) do
+    case send_text_query(state, statement) |> text_query_recv(query, []) do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, state} ->
