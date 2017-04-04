@@ -7,7 +7,7 @@ Add Mariaex as a dependency in your `mix.exs` file.
 
 ```elixir
 def deps do
-  [{:mariaex, "~> 0.7.3"} ]
+  [{:mariaex, "~> 0.8.2"} ]
 end
 ```
 
