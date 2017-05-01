@@ -74,6 +74,8 @@ defmodule Mariaex do
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
       options, this option must be included with all requests contacting the pool
      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+    * `:name` - A name to register the started process (see the `:name` option
+    in `GenServer.start_link/3`).
 
   ## Function signatures
 
