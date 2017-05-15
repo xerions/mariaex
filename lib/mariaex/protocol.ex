@@ -256,7 +256,7 @@ defmodule Mariaex.Protocol do
       {:ok, packet(msg: _), _state} ->
         sock_mod.close(sock)
       {:error, _} ->
-        :ok
+        sock_mod.close(sock)
     end
     _ = sock_mod.recv_active(sock, 0, "")
     :ok
