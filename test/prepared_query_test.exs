@@ -16,7 +16,7 @@ defmodule PreparedQueryTest do
   test "executing unprepared query raises", context do
     :ok = query("CREATE TABLE unprepared_test (id int, text text)", [])
     conn = context[:pid]
-    query = %Mariaex.Query{type: :binary, name: "unprepared_test", statement: "SELECT * FROM unprepared_test"}
+    query = %Mariaex.Query{name: "unprepared_test", statement: "SELECT * FROM unprepared_test"}
     assert_raise ArgumentError, ~r"has not been prepared", fn() -> Mariaex.execute!(conn, query, []) end
   end
 

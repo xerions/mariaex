@@ -8,18 +8,6 @@ defmodule Mariaex do
 
   @timeout 5000
 
-  ## Helper to raise error
-  defmacrop arg_error_raiser(result) do
-    quote do
-      case unquote(result) do
-        {:error, %ArgumentError{} = error} ->
-          raise error
-        result ->
-          result
-      end
-    end
-  end
-
   @typedoc """
   A connection process name, pid or reference.
 
@@ -122,6 +110,9 @@ defmodule Mariaex do
        (default `false`)
     * `:binary_as` - encoding binary as `:field_type_var_string` (default)
        or `:field_type_blob`
+    * `:query_type` - `:binary` to use binary protocol, `:text` to use text
+      protocol and `:unknown` to try binary but fallback to text (default
+      `:unknown`)
 
   ## Examples
 
@@ -138,14 +129,17 @@ defmodule Mariaex do
 
   """
   @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
-  def query(conn, statement, params \\ [], opts \\ []) do
-    case DBConnection.prepare_execute(conn, %Query{statement: statement}, params, defaults(opts)) do
-      {:ok, _, result} ->
-        {:ok, result}
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      {:error, _} = error ->
-        error
+  def query(conn, statement, params \\ [], opts \\ [])
+
+  def query(conn, statement, params, opts) do
+    case Keyword.get(opts, :query_type, :unknown) do
+      :text ->
+        query = %Query{type: :text, statement: statement, ref: make_ref(),
+                       num_params: 0}
+        execute(conn, query, [], opts)
+      type when type in [:binary, :unknown] ->
+        query = %Query{type: type, statement: statement}
+        prepare_execute(conn, query, params, defaults(opts))
     end
   end
 
@@ -154,8 +148,12 @@ defmodule Mariaex do
   there was an error. See `query/3`.
   """
   def query!(conn, statement, params \\ [], opts \\ []) do
-    {_, result} = DBConnection.prepare_execute!(conn, %Query{statement: statement}, params, defaults(opts))
-    result
+    case query(conn, statement, params, opts) do
+      {:ok, result} ->
+        result
+      {:error, err} ->
+        raise err
+    end
   end
 
   @doc """
@@ -173,6 +171,9 @@ defmodule Mariaex do
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
+    * `:query_type` - `:binary` to use binary protocol, `:text` to use text
+      protocol and `:unknown` to try binary but fallback to text (default
+      `:unknown`)
 
   ## Examples
 
@@ -180,9 +181,15 @@ defmodule Mariaex do
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Mariaex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
-    query = %Query{name: name, statement: statement}
-    DBConnection.prepare(conn, query, defaults(opts))
-    |> arg_error_raiser
+    case Keyword.get(opts, :query_type, :unknown) do
+      :text ->
+        query = %Query{type: :text, name: name, statement: statement,
+                       ref: make_ref(), num_params: 0}
+        {:ok, query}
+      type when type in [:binary, :unknown] ->
+        query = %Query{type: type, name: name, statement: statement}
+        prepare_binary(conn, query, opts)
+    end
   end
 
   @doc """
@@ -191,8 +198,12 @@ defmodule Mariaex do
   """
   @spec prepare!(conn, iodata, iodata, Keyword.t) :: Mariaex.Query.t
   def prepare!(conn, name, statement, opts \\ []) do
-    query = %Query{name: name, statement: statement}
-    DBConnection.prepare!(conn, query, defaults(opts))
+    case prepare(conn, name, statement, opts) do
+      {:ok, res} ->
+        res
+      {:error, err} ->
+        raise err
+    end
   end
 
   @doc """
@@ -224,9 +235,13 @@ defmodule Mariaex do
   """
   @spec execute(conn, Mariaex.Query.t, list, Keyword.t) ::
     {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
-  def execute(conn, query, params, opts \\ []) do
-    DBConnection.execute(conn, query, params, defaults(opts))
-    |> arg_error_raiser
+  def execute(conn, %Query{} = query, params, opts \\ []) do
+    case DBConnection.execute(conn, query, params, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
   end
 
   @doc """
@@ -235,7 +250,12 @@ defmodule Mariaex do
   """
   @spec execute!(conn, Mariaex.Query.t, list, Keyword.t) :: Mariaex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    DBConnection.execute!(conn, query, params, defaults(opts))
+    case execute(conn, query, params, opts) do
+      {:ok, res} ->
+        res
+      {:error, err} ->
+        raise err
+    end
   end
 
   @doc """
@@ -257,10 +277,19 @@ defmodule Mariaex do
       Mariaex.close(conn, query)
   """
   @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
-  def close(conn, query, opts \\ []) do
+  def close(conn, query, opts \\ [])
+
+  def close(_, %Query{type: :text}, _) do
+    :ok
+  end
+  def close(conn, query, opts) do
     case DBConnection.close(conn, query, defaults(opts)) do
-      {:ok, _} -> :ok
-      other    -> arg_error_raiser(other)
+      {:ok, _} ->
+        :ok
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
     end
   end
 
@@ -270,7 +299,12 @@ defmodule Mariaex do
   """
   @spec close!(conn, Mariaex.Query.t, Keyword.t) :: :ok
   def close!(conn, query, opts \\ []) do
-    DBConnection.close!(conn, query, defaults(opts))
+    case close(conn, query, opts) do
+      :ok ->
+        :ok
+      {:error, err} ->
+        raise err
+    end
   end
 
   @doc """
@@ -343,6 +377,9 @@ defmodule Mariaex do
 
   ### Options
     * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
+    * `:query_type` - `:binary` to use binary protocol, `:text` to use text
+      protocol and `:unknown` to try binary but fallback to text (default
+      `:unknown`)
 
       Mariaex.transaction(pid, fn(conn) ->
         stream = Mariaex.stream(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
@@ -354,11 +391,18 @@ defmodule Mariaex do
   def stream(conn, query, params, opts \\ [])
 
   def stream(conn, %Query{} = query, params, opts) do
-    DBConnection.stream(conn, query, params, opts)
+    DBConnection.stream(conn, query, params, defaults(opts))
   end
   def stream(conn, statement, params, opts) do
-    query = %Query{name: "", statement: statement}
-    DBConnection.prepare_stream(conn, query, params, opts)
+    case Keyword.get(opts, :query_type, :unknown) do
+      :text ->
+        query = %Query{type: :text, statement: statement, ref: make_ref(),
+                       num_params: 0}
+        stream(conn, query, [], opts)
+      type when type in [:binary, :unknown] ->
+        query = %Query{type: type, statement: statement}
+        prepare_stream(conn, query, params, opts)
+    end
   end
 
   @doc """
@@ -370,6 +414,30 @@ defmodule Mariaex do
   end
 
   ## Helpers
+
+  defp prepare_execute(conn, query, params, opts) do
+    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+      {:ok, _, result} ->
+        {:ok, result}
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp prepare_binary(conn, query, opts) do
+    case DBConnection.prepare(conn, query, defaults(opts)) do
+      {:error, %ArgumentError{} = err} ->
+        raise err
+      other ->
+        other
+    end
+  end
+
+  defp prepare_stream(conn, query, params, opts) do
+    DBConnection.prepare_stream(conn, query, params, defaults(opts))
+  end
 
   defp defaults(opts) do
     Keyword.put_new(opts, :timeout, @timeout)
