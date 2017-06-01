@@ -111,8 +111,7 @@ defmodule Mariaex do
     * `:binary_as` - encoding binary as `:field_type_var_string` (default)
        or `:field_type_blob`
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
-      protocol and `:unknown` to try binary but fallback to text (default
-      `:unknown`)
+      protocol  `nil` to try binary but fallback to text (default `nil`)
 
   ## Examples
 
@@ -132,12 +131,12 @@ defmodule Mariaex do
   def query(conn, statement, params \\ [], opts \\ [])
 
   def query(conn, statement, params, opts) do
-    case Keyword.get(opts, :query_type, :unknown) do
+    case Keyword.get(opts, :query_type) do
       :text ->
         query = %Query{type: :text, statement: statement, ref: make_ref(),
                        num_params: 0}
         execute(conn, query, [], opts)
-      type when type in [:binary, :unknown] ->
+      type when type in [:binary, nil] ->
         query = %Query{type: type, statement: statement}
         prepare_execute(conn, query, params, defaults(opts))
     end
@@ -172,8 +171,7 @@ defmodule Mariaex do
     * `:pool` - The pool module to use, must match that set on
     `start_link/1`, see `DBConnection`
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
-      protocol and `:unknown` to try binary but fallback to text (default
-      `:unknown`)
+      protocol or `nil` to try binary but fallback to text (default `nil`)
 
   ## Examples
 
@@ -181,12 +179,12 @@ defmodule Mariaex do
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Mariaex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
-    case Keyword.get(opts, :query_type, :unknown) do
+    case Keyword.get(opts, :query_type) do
       :text ->
         query = %Query{type: :text, name: name, statement: statement,
                        ref: make_ref(), num_params: 0}
         {:ok, query}
-      type when type in [:binary, :unknown] ->
+      type when type in [:binary, nil] ->
         query = %Query{type: type, name: name, statement: statement}
         prepare_binary(conn, query, opts)
     end
@@ -378,8 +376,7 @@ defmodule Mariaex do
   ### Options
     * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
-      protocol and `:unknown` to try binary but fallback to text (default
-      `:unknown`)
+      protocol or `nil` to try binary but fallback to text (default `nil`)
 
       Mariaex.transaction(pid, fn(conn) ->
         stream = Mariaex.stream(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
@@ -394,12 +391,12 @@ defmodule Mariaex do
     DBConnection.stream(conn, query, params, defaults(opts))
   end
   def stream(conn, statement, params, opts) do
-    case Keyword.get(opts, :query_type, :unknown) do
+    case Keyword.get(opts, :query_type) do
       :text ->
         query = %Query{type: :text, statement: statement, ref: make_ref(),
                        num_params: 0}
         stream(conn, query, [], opts)
-      type when type in [:binary, :unknown] ->
+      type when type in [:binary, nil] ->
         query = %Query{type: type, statement: statement}
         prepare_stream(conn, query, params, opts)
     end

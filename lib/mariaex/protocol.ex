@@ -314,7 +314,7 @@ defmodule Mariaex.Protocol do
   def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
-  def handle_prepare(%Query{type: :unknown} = query, opts, s) do
+  def handle_prepare(%Query{type: nil} = query, opts, s) do
     case handle_prepare(%Query{query | type: :binary}, opts, s) do
       {:error,  %Mariaex.Error{mariadb: %{code: 1295}}, s} ->
         {:ok, %Query{query | type: :text, ref: make_ref(), num_params: 0}, s}
