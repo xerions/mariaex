@@ -154,7 +154,8 @@ defmodule Mariaex.Protocol do
   defp handshake_recv(state, request) do
     case msg_recv(state, state.timeout) do
       {:ok, packet, state} ->
-        handle_handshake(packet, request, state)
+        do_handshake(packet, request, state)
+
       {:error, reason} ->
         {sock_mod, _} = state.sock
         Mariaex.Protocol.do_disconnect(state, {sock_mod.tag, "recv", reason, ""}) |> connected()
@@ -166,6 +167,42 @@ defmodule Mariaex.Protocol do
     {:error, error}
   end
   defp connected(other), do: other
+
+  defp do_handshake(packet, request, %{state: :handshake_send}=state) do
+    handle_handshake(packet, request, state)
+  end
+
+  defp do_handshake(packet, request, state) do
+    handshake_timeout = state.timeout
+    timer = start_handshake_timer(handshake_timeout, state)
+
+    result = handle_handshake(packet, request, state)
+
+    cancel_handshake_timer(timer)
+    result
+  end
+
+  defp start_handshake_timer(:infinity, _), do: :infinity
+  defp start_handshake_timer(timeout, s) do
+    {:ok, tref} = :timer.apply_after(timeout, __MODULE__, :handshake_shutdown,
+                                     [timeout, self(), s])
+    {:timer, tref}
+  end
+
+  @doc false
+  def handshake_shutdown(timeout, pid, state) do
+    if Process.alive?(pid) do
+      reason = "timed out after #{timeout}ms"
+      {sock_mod, _} = state.sock
+      Mariaex.Protocol.do_disconnect(state, {sock_mod.tag, "handshake", reason, ""}) |> connected()
+    end
+  end
+
+  defp cancel_handshake_timer(:infinity), do: :ok
+  defp cancel_handshake_timer({:timer, tref}) do
+    {:ok, _} = :timer.cancel(tref)
+    :ok
+  end
 
   # request to communicate over an SSL connection
   defp handle_handshake(packet(seqnum: seqnum) = packet, opts, %{ssl_conn_state: :ssl_handshake} = s) do
