@@ -11,14 +11,13 @@ defmodule Mariaex.Result do
   """
 
   @type t :: %__MODULE__{
-    command:  atom,
     columns:  [String.t] | nil,
     rows:     [tuple] | nil,
     last_insert_id: integer,
     num_rows: integer,
     connection_id: nil}
 
-  defstruct [:command, :columns, :rows, :last_insert_id, :num_rows, :connection_id]
+  defstruct [:columns, :rows, :last_insert_id, :num_rows, :connection_id]
 end
 
 defmodule Mariaex.Error do

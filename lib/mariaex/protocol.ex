@@ -314,15 +314,16 @@ defmodule Mariaex.Protocol do
   def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
     reserved_error(query, s)
   end
-  def handle_prepare(%Query{type: nil, statement: statement} = query, opts, s) do
-    command = get_command(statement)
-    handle_prepare(%{query | type: request_type(command), binary_as: s.binary_as}, opts, s)
-  end
-  def handle_prepare(%Query{type: :text} = query, _, s) do
-    {:ok, %Query{query | ref: make_ref(), num_params: 0}, s}
+  def handle_prepare(%Query{type: nil} = query, opts, s) do
+    case handle_prepare(%Query{query | type: :binary}, opts, s) do
+      {:error,  %Mariaex.Error{mariadb: %{code: 1295}}, s} ->
+        {:ok, %Query{query | type: :text, ref: make_ref(), num_params: 0}, s}
+      other ->
+        other
+    end
   end
   def handle_prepare(%Query{type: :binary} = query, _, s) do
-    case prepare_lookup(query, s) do
+    case prepare_lookup(%Query{query | binary_as: s.binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
       {:prepare, query} ->
@@ -331,13 +332,9 @@ defmodule Mariaex.Protocol do
         close_prepare(id, query, s)
     end
   end
-
-  defp request_type(command) do
-    if command in [:insert, :select, :update, :delete, :replace, :show, :call, :describe] do
-      :binary
-    else
-      :text
-    end
+  def handle_prepare(%Query{type: _} = query, _, s) do
+    error = ArgumentError.exception("query #{inspect query} is already prepared")
+    {:error, error, s}
   end
 
   defp prepare_lookup(%Query{name: "", statement: statement} = query, %{lru_cache: cache}) do
@@ -445,9 +442,6 @@ defmodule Mariaex.Protocol do
       {:close_prepare_execute, id, query} ->
         prepare_execute(&close_prepare(id, query, &1), params, state)
     end
-  end
-  def handle_execute(query, params, _opts, state) do
-    query_error(state, "unsupported parameterized query #{inspect(query.statement)} parameters #{inspect(params)}")
   end
 
   defp execute_lookup(%Query{name: ""} = query, %{lru_cache: cache}) do
@@ -1136,10 +1130,6 @@ defmodule Mariaex.Protocol do
     %{s | state: :column_count}
   end
 
-  defp query_error(s, msg) do
-    {:error, ArgumentError.exception(msg), s}
-  end
-
   defp abort_statement(s, query, code, message) do
     abort_statement(s, query, %Mariaex.Error{mariadb: %{code: code, message: message}})
   end
@@ -1157,14 +1147,6 @@ defmodule Mariaex.Protocol do
     error = ArgumentError.exception("query #{inspect query} uses reserved name")
     {:error, error, s}
   end
-
-  @doc """
-  Get command from statement
-  """
-  def get_command(statement) when is_binary(statement) do
-    statement |> :binary.split([" ", "\n"]) |> hd |> String.downcase |> String.to_atom
-  end
-  def get_command(nil), do: nil
 
   def get_3_digits_version(string) do
     [major, minor, rest] = String.split(string, ".", parts: 3)
