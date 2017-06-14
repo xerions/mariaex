@@ -154,7 +154,11 @@ defmodule Mariaex.Protocol do
   defp handshake_recv(state, request) do
     case msg_recv(state) do
       {:ok, packet, state} ->
-        handle_handshake(packet, request, state)
+        case handle_handshake(packet, request, state) do
+          {:error, error} ->
+            do_disconnect(state, error, "") |> connected()
+          other -> other
+        end
       {:error, reason} ->
         {sock_mod, _} = state.sock
         Mariaex.Protocol.do_disconnect(state, {sock_mod.tag, "recv", reason, ""}) |> connected()
@@ -256,7 +260,7 @@ defmodule Mariaex.Protocol do
       {:ok, packet(msg: _), _state} ->
         sock_mod.close(sock)
       {:error, _} ->
-        :ok
+        sock_mod.close(sock)
     end
     _ = sock_mod.recv_active(sock, 0, "")
     :ok
