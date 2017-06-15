@@ -19,14 +19,14 @@ defmodule TextQueryTest do
     dt datetime
     )
     """
-    {:ok, _} = Mariaex.execute(pid, %Mariaex.Query{type: :text, statement: create}, [])
+    {:ok, _} = Mariaex.query(pid, create, [], [query_type: :text])
     insert = """
     INSERT INTO test_text_query_table (id, bools, bits, varchars, texts, floats, ts, dt)
     VALUES
     (1, true, b'10', 'hello', 'world', 1.1, '2016-09-26 16:36:06', '0001-01-01 00:00:00'),
     (2, false, b'11', 'goodbye', 'earth', 1.2, '2016-09-26T16:36:07', '0001-01-01 00:00:01')
     """
-    {:ok, _} = Mariaex.execute(pid, %Mariaex.Query{type: :text, statement: insert}, [])
+    {:ok, _} = Mariaex.query(pid, insert, [], [query_type: :text])
 
     if System.get_env "MYSQL_5_7" do
       create = """
@@ -36,14 +36,14 @@ defmodule TextQueryTest do
       dt datetime
       )
       """
-      {:ok, _} = Mariaex.execute(pid, %Mariaex.Query{type: :text, statement: create}, [])
+      {:ok, _} = Mariaex.query(pid, create, [], [query_type: :text])
       insert = """
       INSERT INTO test_text_json_query_table (id, map, dt)
       VALUES
       (1, '{"hoge": "1", "huga": "2"}', '2017-01-01 00:00:00'),
       (2, '{"hoge": "3", "huga": "4"}', '2017-01-01 00:00:01')
       """
-      {:ok, _} = Mariaex.execute(pid, %Mariaex.Query{type: :text, statement: insert}, [])
+      {:ok, _} = Mariaex.query(pid, insert, [], [query_type: :text])
     end
 
     {:ok, [pid: pid]}

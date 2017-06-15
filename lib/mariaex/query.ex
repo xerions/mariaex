@@ -52,10 +52,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   This function is called to encode a query before it is executed.
   """
-  def encode(%Mariaex.Query{ref: nil, type: :binary} = query, _params, _opts) do
+  def encode(%Mariaex.Query{type: nil} = query, _params, _opts) do
     raise ArgumentError, "query #{inspect query} has not been prepared"
   end
-  def encode(%Mariaex.Query{type: :binary, num_params: num_params} = query, params, _opts)
+  def encode(%Mariaex.Query{num_params: num_params} = query, params, _opts)
       when length(params) != num_params do
     raise ArgumentError, "parameters must be of length #{num_params} for query #{inspect query}"
   end
@@ -64,8 +64,8 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
     parameters_to_binary(params, binary_as, json_library)
   end
-  def encode(%Mariaex.Query{type: :text}, params, _opts) do
-    params
+  def encode(%Mariaex.Query{type: :text}, [], _opts) do
+    []
   end
 
   defp parameters_to_binary([], _binary_as, _json_library), do: <<>>
@@ -134,28 +134,15 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp encode_param(other, _binary_as, _json_library),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 
-  @commands_without_rows [:create, :insert, :replace, :update, :delete, :set,
-                          :alter, :rename, :drop, :begin, :commit, :rollback,
-                          :savepoint, :execute, :prepare, :truncate, :grant]
-
-  def decode(%Mariaex.Query{statement: statement}, {res, nil}, _) do
-    command = Mariaex.Protocol.get_command(statement)
-    %Mariaex.Result{res | command: command, rows: nil}
+  def decode(_, {res, nil}, _) do
+    %Mariaex.Result{res | rows: nil}
   end
-  def decode(%Mariaex.Query{statement: statement}, {res, columns}, opts) do
-    command = Mariaex.Protocol.get_command(statement)
-    if command in @commands_without_rows do
-      %Mariaex.Result{res | command: command, rows: nil}
-    else
-      %Mariaex.Result{rows: rows} = res
-      decoded = do_decode(rows, opts)
-      include_table_name = opts[:include_table_name]
-      columns = for %Column{} = column <- columns, do: column_name(column, include_table_name)
-      %Mariaex.Result{res | command: command,
-                            rows: decoded,
-                            columns: columns,
-                            num_rows: length(decoded)}
-    end
+  def decode(_, {res, columns}, opts) do
+    %Mariaex.Result{rows: rows} = res
+    decoded = do_decode(rows, opts)
+    include_table_name = opts[:include_table_name]
+    columns = for %Column{} = column <- columns, do: column_name(column, include_table_name)
+    %Mariaex.Result{res | rows: decoded, columns: columns, num_rows: length(decoded)}
   end
 
   ## helpers

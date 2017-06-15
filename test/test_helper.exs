@@ -85,8 +85,8 @@ defmodule Mariaex.TestHelper do
 
   defmacro execute_text(stat, params, opts \\ []) do
     quote do
-      case Mariaex.execute(var!(context)[:pid], %Mariaex.Query{type: :text, statement: unquote(stat)},
-            unquote(params), unquote(opts)) do
+      case Mariaex.query(var!(context)[:pid], unquote(stat),
+            unquote(params), [query_type: :text] ++ unquote(opts)) do
         {:ok, %Mariaex.Result{rows: nil}} -> :ok
         {:ok, %Mariaex.Result{rows: rows}} -> rows
         {:error, %Mariaex.Error{} = err} -> err

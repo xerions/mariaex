@@ -415,7 +415,6 @@ defmodule QueryTest do
     {:ok, res} = Mariaex.Connection.query(context[:pid], "SELECT 1 AS first, 10 AS last", [])
 
     assert %Mariaex.Result{} = res
-    assert res.command == :select
     assert res.columns == ["first", "last"]
     assert res.num_rows == 1
   end
@@ -466,12 +465,10 @@ defmodule QueryTest do
 
     {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
     assert %Mariaex.Result{} = res
-    assert res.command == :update
     assert res.num_rows == 1
 
     {:ok, res} = Mariaex.Connection.query(context[:pid], "UPDATE #{table} SET num = 2", [])
     assert %Mariaex.Result{} = res
-    assert res.command == :update
     assert res.num_rows == 1
   end
 
