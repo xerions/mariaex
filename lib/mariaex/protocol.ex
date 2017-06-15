@@ -706,7 +706,7 @@ defmodule Mariaex.Protocol do
         declare(id, params, opts, state)
       {:prepare_declare, query} ->
         prepare_declare(&prepare(query, &1), params, opts, state)
-      {:close_prepare_execute, id, query} ->
+      {:close_prepare_declare, id, query} ->
         prepare_declare(&close_prepare(id, query, &1), params, opts, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
