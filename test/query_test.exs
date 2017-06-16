@@ -5,6 +5,8 @@ defmodule QueryTest do
   setup do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", cache_size: 2, backoff_type: :stop]
     {:ok, pid} = Mariaex.Connection.start_link(opts)
+    # remove all modes for this session to have the same behaviour on different versions of mysql/mariadb
+    {:ok, _} = Mariaex.Connection.query(pid, "SET SESSION sql_mode = \"\";")
     {:ok, [pid: pid]}
   end
 
