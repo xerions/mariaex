@@ -51,7 +51,7 @@ defmodule Mariaex.Protocol do
   defstruct sock: nil,
             state: nil,
             state_data: nil,
-            protocol57: false,
+            deprecated_eof: false,
             binary_as: nil,
             connection_id: nil,
             opts: [],
@@ -186,15 +186,12 @@ defmodule Mariaex.Protocol do
         {:error, error}
     end
   end
-  defp handle_handshake(packet(seqnum: seqnum, msg: handshake(server_version: server_version, plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
-    ## It is a little hack here. Because MySQL before 5.7.5 (at least, I need to assume this or test it with versions 5.7.X, where X < 5),
-    ## but all points in documentation to changes shows, that changes done in 5.7.5, but haven't tested it further.
-    ## In a phase of getting binary protocol resultset ( https://dev.mysql.com/doc/internals/en/binary-protocol-resultset.html )
-    ## we get in versions before 5.7.X eof packet after last ColumnDefinition and one for the ending of query.
-    ## That means, without differentiation of MySQL versions, we can't know, if eof after last column definition
-    ## is resulting eof after result set (which can be none) or simple information, that now results will be coming.
-    ## Due to this, we need to difference server version.
-    protocol57 = get_3_digits_version(server_version) |> Version.match?("~> 5.7.5")
+  defp handle_handshake(packet(seqnum: seqnum, 
+                               msg: handshake(capability_flags_1: flag1,
+                                              capability_flags_2: flag2,
+                                              plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
+    <<flag :: size(32)>> = <<flag2 :: size(16), flag1 :: size(16)>>
+    deprecated_eof = (flag &&& @client_deprecate_eof) == @client_deprecate_eof
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
     scramble = case password = opts[:password] do
       nil -> ""
@@ -206,7 +203,7 @@ defmodule Mariaex.Protocol do
                          database: database, capability_flags: capabilities,
                          max_size: @maxpacketbytes, character_set: 8)
     msg_send(msg, s, seqnum + 1)
-    handshake_recv(%{s | state: :handshake_send, protocol57: protocol57}, nil)
+    handshake_recv(%{s | state: :handshake_send, deprecated_eof: deprecated_eof}, nil)
   end
   defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id) = _packet), nil, state) do
     statement = "SET CHARACTER SET " <> (state.opts[:charset] || "utf8")
@@ -406,10 +403,10 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  defp do_skip_definitions(%{protocol57: true} = state, 0) do
+  defp do_skip_definitions(%{deprecated_eof: true} = state, 0) do
     {:eof, state}
   end
-  defp do_skip_definitions(%{protocol57: false} = state, 0) do
+  defp do_skip_definitions(%{deprecated_eof: false} = state, 0) do
     case msg_recv(state) do
       {:ok, packet(msg: eof_resp()), state} ->
         {:eof, state}
@@ -594,10 +591,10 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  defp columns_recv(%{protocol57: true} = state, 0, columns) do
+  defp columns_recv(%{deprecated_eof: true} = state, 0, columns) do
     {:eof, Enum.reverse(columns), 0, state}
   end
-  defp columns_recv(%{protocol57: false} = state, 0, columns) do
+  defp columns_recv(%{deprecated_eof: false} = state, 0, columns) do
     case msg_recv(state) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), state} ->
         {:eof, Enum.reverse(columns), flags, state}
@@ -712,7 +709,7 @@ defmodule Mariaex.Protocol do
         declare(id, params, opts, state)
       {:prepare_declare, query} ->
         prepare_declare(&prepare(query, &1), params, opts, state)
-      {:close_prepare_execute, id, query} ->
+      {:close_prepare_declare, id, query} ->
         prepare_declare(&close_prepare(id, query, &1), params, opts, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
@@ -1156,19 +1153,5 @@ defmodule Mariaex.Protocol do
   defp reserved_error(query, s) do
     error = ArgumentError.exception("query #{inspect query} uses reserved name")
     {:error, error, s}
-  end
-
-  def get_3_digits_version(string) do
-    [major, minor, rest] = String.split(string, ".", parts: 3)
-    bugfix = digits(rest)
-    "#{major}.#{minor}.#{bugfix}"
-  end
-
-  defp digits(string, acc \\ [])
-  defp digits(<<c, rest :: binary>>, acc) when c >= ?0 and c <= ?9 do
-    digits(rest, [c | acc])
-  end
-  defp digits(_, acc) do
-    acc |> Enum.reverse()
   end
 end
