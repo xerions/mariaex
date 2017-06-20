@@ -32,12 +32,11 @@ sql = """
 """
 
 cmds = [
-    ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
-    ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci'";),
-    ~s(mysql #{mysql_connect} -e "DROP USER 'mariaex_user'@'%';"),
-    ~s(mysql #{mysql_connect} -e "CREATE USER 'mariaex_user'@'%' IDENTIFIED BY 'mariaex_pass';"),
-    ~s(mysql #{mysql_connect} -e "GRANT ALL PRIVILEGES ON *.* TO 'mariaex_user'@'%' WITH GRANT OPTION;"),
-    ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=#{mysql_protocol} -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
+  ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
+  ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci'";),
+  ~s(mysql #{mysql_connect} -e "CREATE USER 'mariaex_user'@'%' IDENTIFIED BY 'mariaex_pass';"),
+  ~s(mysql #{mysql_connect} -e "GRANT ALL PRIVILEGES ON *.* TO 'mariaex_user'@'%' WITH GRANT OPTION;"),
+  ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=#{mysql_protocol} -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
 ]
 
 Enum.each(cmds, fn cmd ->
