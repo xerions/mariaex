@@ -28,7 +28,7 @@ defmodule TextQueryTest do
     """
     {:ok, _} = Mariaex.query(pid, insert, [], [query_type: :text])
 
-    if System.get_env "MYSQL_5_7" do
+    if System.get_env("MYSQL_5_7") === "true" do
       create = """
       CREATE TABLE test_text_json_query_table (
       id serial,
@@ -90,7 +90,7 @@ defmodule TextQueryTest do
     assert(rows == [[1, "hello"], [2, "goodbye"]])
   end
 
-  if System.get_env "MYSQL_5_7" do
+  if System.get_env("MYSQL_5_7") === "true" do
     test "select json", context do
       opts = [json_library: Poison]
 

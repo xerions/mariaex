@@ -244,7 +244,7 @@ defmodule QueryTest do
     assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [[date0]]
 
     # MySQL 5.7 prohibits zero dates on strict mode
-    unless System.get_env "MYSQL_5_7" do
+    unless System.get_env("MYSQL_5_7") === "true" do
       :ok = query(insert, [2, date1])
       assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [[date1]]
     end
@@ -310,7 +310,7 @@ defmodule QueryTest do
     assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [[timestamp, {date, {13, 32, 15, 0}}]]
 
     # MySQL 5.7 prohibits zero dates on strict mode
-    unless System.get_env "MYSQL_5_7" do
+    unless System.get_env("MYSQL_5_7") === "true" do
       assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [[{{0, 0, 0}, {0, 0, 0, 0}}]]
     end
 
@@ -601,7 +601,7 @@ defmodule QueryTest do
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'New', ?);", [timestamp])
   end
 
-  if System.get_env "MYSQL_5_7" do
+  if System.get_env("MYSQL_5_7") === "true "do
     test "support json for MySQL > 5.7.9", context do
       opts = [json_library: Poison]
 
