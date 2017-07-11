@@ -123,6 +123,18 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
+  defp encode_param(%Mariaex.Geometry.Point{coordinates: {x, y}, srid: srid} = point, _binary_as) do
+    srid = case srid do
+      srid when is_integer(srid) and srid >= 0 -> << srid::little-32 >>
+      nil -> << 0::little-32 >>
+    end
+    endian = << 1::little-8 >> # MySQL is always little-endian
+    point = << 1::little-32 >>
+    x = << x::little-float-64 >>
+    y = << y::little-float-64 >>
+    mysql_wkb = srid <> endian <> point <> x <> y
+    encode_param(mysql_wkb, :field_type_geometry)
+  end
   defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 

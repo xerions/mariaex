@@ -67,6 +67,8 @@ defmodule Mariaex.Messages do
             field_type_blob: 0xfc,
             field_type_var_string: 0xfd,
             field_type_string: 0xfe],
+          geometry:
+            [field_type_geometry: 0xff],
           null:
            [field_type_null: 0x06]
          ]
