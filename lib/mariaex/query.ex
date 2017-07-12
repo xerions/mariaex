@@ -137,6 +137,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
+
   defp encode_param(%Mariaex.Geometry.Point{coordinates: {x, y}, srid: srid} = point, _binary_as) do
     srid = case srid do
       srid when is_integer(srid) and srid >= 0 -> << srid::little-32 >>
@@ -149,13 +150,24 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     mysql_wkb = srid <> endian <> point_type <> x <> y
     encode_param(mysql_wkb, :field_type_geometry)
   end
+
   defp encode_param(%Mariaex.Geometry.LineString{coordinates: coordinates, srid: srid}, _binary_as) do
     srid = encode_srid(srid)
     endian = << 1::little-8 >> # MySQL is always little-endian
     linestring_type = << 2::little-32 >>
     num_points = << length(coordinates)::32-little >>
-    coordinates = for {x, y} <- coordinates, do: << x::little-float-64, y::little-float-64 >>, into: <<>>
+    coordinates = encode_coordinates(coordinates)
     mysql_wkb = srid <> endian <> linestring_type <> num_points <> coordinates
+    encode_param(mysql_wkb, :field_type_geometry)
+  end
+
+  defp encode_param(%Mariaex.Geometry.Polygon{coordinates: coordinates, srid: srid}, _binary_as) do
+    srid = encode_srid(srid)
+    endian = << 1::little-8 >> # MySQL is always little-endian
+    polygon_type = << 3::little-32 >>
+    num_rings = << length(coordinates)::32-little >>
+    rings = encode_rings(coordinates)
+    mysql_wkb = srid <> endian <> polygon_type <> num_rings <> rings
     encode_param(mysql_wkb, :field_type_geometry)
   end
 
@@ -198,6 +210,14 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: << srid::little-32 >>
   defp encode_srid(nil),
     do: << 0::little-32 >>
+
+  defp encode_rings(rings) when is_list(rings) do
+    for coordinates <- rings, do: << length(coordinates)::little-32 >> <> encode_coordinates(coordinates), into: <<>>
+  end
+
+  defp encode_coordinates(coordinates) when is_list(coordinates) do
+    for {x, y} <- coordinates, do: << x::little-float-64, y::little-float-64 >>, into: <<>>
+  end
 end
 
 defimpl String.Chars, for: Mariaex.Query do
