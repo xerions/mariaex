@@ -137,8 +137,17 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     endian = << 1::little-8 >> # MySQL is always little-endian
     linestring_type = << 2::little-32 >>
     num_points = << length(coordinates)::32-little >>
-    coordinates = for {x, y} <- coordinates, do: << x::little-float-64, y::little-float-64 >>, into: <<>>
+    coordinates = encode_coordinates(coordinates)
     mysql_wkb = srid <> endian <> linestring_type <> num_points <> coordinates
+    encode_param(mysql_wkb, :field_type_geometry)
+  end
+  defp encode_param(%Mariaex.Geometry.Polygon{coordinates: coordinates, srid: srid}, _binary_as) do
+    srid = encode_srid(srid)
+    endian = << 1::little-8 >> # MySQL is always little-endian
+    polygon_type = << 3::little-32 >>
+    num_rings = << length(coordinates)::32-little >>
+    rings = encode_rings(coordinates)
+    mysql_wkb = srid <> endian <> polygon_type <> num_rings <> rings
     encode_param(mysql_wkb, :field_type_geometry)
   end
   defp encode_param(other, _binary_as),
@@ -180,6 +189,14 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: << srid::little-32 >>
   defp encode_srid(nil),
     do: << 0::little-32 >>
+
+  defp encode_rings(rings) when is_list(rings) do
+    for coordinates <- rings, do: << length(coordinates)::little-32 >> <> encode_coordinates(coordinates), into: <<>>
+  end
+
+  defp encode_coordinates(coordinates) when is_list(coordinates) do
+    for {x, y} <- coordinates, do: << x::little-float-64, y::little-float-64 >>, into: <<>>
+  end
 end
 
 defimpl String.Chars, for: Mariaex.Query do
