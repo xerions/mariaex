@@ -200,11 +200,6 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     acc
   end
 
-  defp encode_srid(srid) when is_integer(srid) and srid >= 0,
-    do: << srid::little-32 >>
-  defp encode_srid(nil),
-    do: << 0::little-32 >>
-
   defp encode_rings(rings) when is_list(rings) do
     for coordinates <- rings, do: << length(coordinates)::little-32 >> <> encode_coordinates(coordinates), into: <<>>
   end

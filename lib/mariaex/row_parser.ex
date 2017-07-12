@@ -362,17 +362,17 @@ defmodule Mariaex.RowParser do
   defp decode_geometry(<<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64, y::little-float-64, rest::bits >>, fields, null_bitfield, acc, datetime, json_library) do
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Point{srid: srid, coordinates: {x, y}} | acc], datetime, json_library)
   end
-  defp decode_geometry(bin_rows = <<len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points_and_rest::bits >>, fields, null_bitfield, acc) do
+  defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points_and_rest::bits >>, fields, null_bitfield, acc) do
     points_len = num_points * 16
     points = :erlang.binary_part(points_and_rest, {0, points_len})
-    rest = :erlang.binary_part(bin_rows, {len + 1, (byte_size(bin_rows) - (len + 1))})
+    rest = :erlang.binary_part(points_and_rest, {0, (byte_size(points_and_rest) - (len - 13))})
     coordinates = decode_points(points)
 
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
   end
-  defp decode_geometry(bin_rows = <<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
-    rest = :erlang.binary_part(bin_rows, {len + 1, (byte_size(bin_rows) - (len + 1))})
+  defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
     rings = :erlang.binary_part(rings_and_rest, {0, len - 13})
+    rest = :erlang.binary_part(rings_and_rest, {0, (byte_size(rings_and_rest) - (len - 13))})
     coordinates = decode_rings(rings)
 
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{srid: srid, coordinates: coordinates} | acc])
