@@ -367,8 +367,8 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
   end
   defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
-    rings = :erlang.binary_part(rings_and_rest, {0, len - 13})
-    rest = :erlang.binary_part(rings_and_rest, {0, (byte_size(rings_and_rest) - (len - 13))})
+    rings_len = len - 13
+    << rings::binary-size(rings_len)-unit(8), rest::bits >> = rings_and_rest
     coordinates = decode_rings(rings)
 
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{srid: srid, coordinates: coordinates} | acc])
