@@ -283,22 +283,20 @@ defmodule Mariaex.RowParser do
     coordinates = decode_points(points)
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
   end
-  defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
-    rings_len = len - 13
-    << rings::binary-size(rings_len)-unit(8), rest::bits >> = rings_and_rest
-    coordinates = decode_rings(rings)
-
-    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{srid: srid, coordinates: coordinates} | acc])
+  defp decode_geometry(<<_len::8-little, srid::32-little, 1::8-little, 3::32-little, num_rings::32-little, rest::bits >>, fields, null_bitfield, acc) do
+    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc})
   end
 
   ### GEOMETRY HELPERS
 
-  defp decode_rings(bitstring, rings \\ [])
-  defp decode_rings(<< num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, rings) do
-    coordinates = decode_points(points)
-    decode_rings(rest, [coordinates | rings])
+  defp decode_rings(rings_and_rows, num_rings, state, rings \\ [])
+  defp decode_rings(rest, 0, {srid, fields, null_bitfield, acc}, rings) when is_bitstring(rest) and is_list(rings) do
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{coordinates: :lists.reverse(rings), srid: srid} | acc])
   end
-  defp decode_rings(<<>>, rings), do: :lists.reverse(rings)
+  defp decode_rings(<< num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, num_rings, state, rings) do
+    points = decode_points(points)
+    decode_rings(rest, num_rings - 1, state, [points | rings])
+  end
 
   defp decode_points(bitstring, points \\ [])
   defp decode_points(<< x::little-float-64, y::little-float-64, rest::bits >>, points) do
