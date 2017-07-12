@@ -290,8 +290,8 @@ defmodule Mariaex.RowParser do
   ### GEOMETRY HELPERS
 
   defp decode_rings(rings_and_rows, num_rings, state, rings \\ [])
-  defp decode_rings(rest, 0, {srid, fields, null_bitfield, acc}, rings) when is_bitstring(rest) and is_list(rings) do
-    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{coordinates: :lists.reverse(rings), srid: srid} | acc])
+  defp decode_rings(rest, 0, {srid, fields, null_bitfield, acc}, rings) do
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{coordinates: Enum.reverse(rings), srid: srid} | acc])
   end
   defp decode_rings(<< num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, num_rings, state, rings) do
     points = decode_points(points)
@@ -302,7 +302,7 @@ defmodule Mariaex.RowParser do
   defp decode_points(<< x::little-float-64, y::little-float-64, rest::bits >>, points) do
     decode_points(rest, [{x, y} | points])
   end
-  defp decode_points(<<>>, points), do: :lists.reverse(points)
+  defp decode_points(<<>>, points), do: Enum.reverse(points)
 
   ### TEXT ROW PARSER
 
