@@ -306,33 +306,33 @@ defmodule Mariaex.RowParser do
     Enum.reverse(acc)
   end
 
-  defp decode_text_rows(string, rest, [:string | fields], acc) do
+  defp decode_text_rows(string, << rest::bits >>, [:string | fields], acc) do
     decode_text_part(rest, fields, [string | acc])
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc)
+  defp decode_text_rows(string, << rest::bits >>, [type | fields], acc)
    when type in [:uint8, :int8, :uint16, :int16, :uint32, :int32, :uint64, :int64] do
     decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc])
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc)
+  defp decode_text_rows(string, << rest::bits >>, [type | fields], acc)
    when type in [:float32, :float64, :decimal] do
     decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc])
   end
 
-  defp decode_text_rows(string, rest, [:bit | fields], acc) do
+  defp decode_text_rows(string, << rest::bits >>, [:bit | fields], acc) do
     decode_text_part(rest, fields, [string | acc])
   end
 
-  defp decode_text_rows(string, rest, [:time | fields], acc) do
+  defp decode_text_rows(string, << rest::bits >>, [:time | fields], acc) do
     decode_text_time(string, rest, fields, acc)
   end
 
-  defp decode_text_rows(string, rest, [:date | fields], acc) do
+  defp decode_text_rows(string, << rest::bits >>, [:date | fields], acc) do
     decode_text_date(string, rest, fields, acc)
   end
 
-  defp decode_text_rows(string, rest, [:datetime | fields], acc) do
+  defp decode_text_rows(string, << rest::bits >>, [:datetime | fields], acc) do
     decode_text_datetime(string, rest, fields, acc)
   end
 
@@ -340,16 +340,16 @@ defmodule Mariaex.RowParser do
     quote do: :erlang.binary_to_integer(unquote(value))
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc) do
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, << rest::bits >>, fields, acc) do
     decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc])
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, << rest::bits >>, fields, acc) do
     decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc])
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, << rest::bits >>, fields, acc) do
     decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc])
   end
 end
