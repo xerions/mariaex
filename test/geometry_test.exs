@@ -10,7 +10,7 @@ defmodule GeometryTest do
     {:ok, [pid: pid]}
   end
 
-  test "inserts point type with geometry column type", context do
+  test "inserts point with geometry column type", context do
     table = "geometry_test_insert_point_geometry_type"
     :ok = query("CREATE TABLE #{table} (id serial, point geometry)", [])
 
@@ -21,7 +21,7 @@ defmodule GeometryTest do
     assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Point{coordinates: {1.0, 1.0}, srid: 0}]]
   end
 
-  test "inserts point type with point column type", context do
+  test "inserts point with point column type", context do
     table = "geometry_test_insert_point_point_type"
     :ok = query("CREATE TABLE #{table} (id serial, point point)", [])
 
@@ -32,7 +32,7 @@ defmodule GeometryTest do
     assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Point{coordinates: {1.0, -1.0}, srid: 42}]]
   end
 
-  test "selects point type with geometry column type", context do
+  test "selects point with geometry column type", context do
     table = "geometry_test_select_point_geometry_type"
     :ok = query("CREATE TABLE #{table} (id serial, point geometry)", [])
     :ok = query(~s{INSERT INTO #{table} (id, point) VALUES (?, ST_GeomFromText(?))}, [1, "POINT(1 1)"])
@@ -40,7 +40,7 @@ defmodule GeometryTest do
     assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Point{srid: 0, coordinates: {1.0, 1.0}}]]
   end
 
-  test "selects point type with point column type", context do
+  test "selects point with point column type", context do
     table = "geometry_test_select_point_point_type"
     :ok = query("CREATE TABLE #{table} (id serial, point point)", [])
     :ok = query(~s{INSERT INTO #{table} (id, point) VALUES (?, ST_GeomFromText(?))}, [1, "POINT(1 1)"])
@@ -67,5 +67,35 @@ defmodule GeometryTest do
     :ok = query(~s{INSERT INTO #{table} (id, point) VALUES (?, ?)}, [1, point])
 
     assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Point{coordinates: {1.0, 1.0}, srid: 0}]]
+  end
+
+  test "inserts linestring with geometry column type", context do
+    table = "geometry_test_insert_linestring_geometry_type"
+    :ok = query("CREATE TABLE #{table} (id serial, linestring geometry)", [])
+
+    point = %Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 42}
+
+    :ok = query(~s{INSERT INTO #{table} (id, linestring) VALUES (?, ?)}, [1, point])
+
+    assert query("SELECT linestring from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 42}]]
+  end
+
+  test "inserts linestring with linestring column type", context do
+    table = "geometry_test_insert_linestring_linestring_type"
+    :ok = query("CREATE TABLE #{table} (id serial, linestring linestring)", [])
+
+    point = %Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: nil}
+
+    :ok = query(~s{INSERT INTO #{table} (id, linestring) VALUES (?, ?)}, [1, point])
+
+    assert query("SELECT linestring from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 0}]]
+  end
+
+  test "selects linestring with geometry column type", context do
+    table = "geometry_test_select_linestring_geometry_type"
+    :ok = query("CREATE TABLE #{table} (id serial, linestring geometry)", [])
+    :ok = query(~s{INSERT INTO #{table} (id, linestring) VALUES (?, ST_GeomFromText(?))}, [1, "LINESTRING(0 0, 10 10, 20 25, 50 60)"])
+
+    assert query("SELECT linestring from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 0}]]
   end
 end
