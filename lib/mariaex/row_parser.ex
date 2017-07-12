@@ -279,6 +279,14 @@ defmodule Mariaex.RowParser do
   defp decode_geometry(<<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64, y::little-float-64, rest::bits >>, fields, null_bitfield, acc) do
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Point{srid: srid, coordinates: {x, y}} | acc])
   end
+  defp decode_geometry(bin_rows = <<len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points_and_rest::bits >>, fields, null_bitfield, acc) do
+    points_stop = num_points * 16
+    bin_points = :erlang.binary_part(points_and_rest, {0, points_stop})
+    rest = :erlang.binary_part(bin_rows, {len + 1, (byte_size(bin_rows) - (len + 1))})
+    coordinates = for << x::little-float-64, y::little-float-64 <- bin_points >>, do: {x, y}
+
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
+  end
 
   ### TEXT ROW PARSER
 
