@@ -363,12 +363,34 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Point{srid: srid, coordinates: {x, y}} | acc], datetime, json_library)
   end
   defp decode_geometry(bin_rows = <<len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points_and_rest::bits >>, fields, null_bitfield, acc) do
-    points_stop = num_points * 16
-    bin_points = :erlang.binary_part(points_and_rest, {0, points_stop})
+    points_len = num_points * 16
+    points = :erlang.binary_part(points_and_rest, {0, points_len})
     rest = :erlang.binary_part(bin_rows, {len + 1, (byte_size(bin_rows) - (len + 1))})
-    coordinates = for << x::little-float-64, y::little-float-64 <- bin_points >>, do: {x, y}
+    coordinates = decode_points(points)
 
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
+  end
+  defp decode_geometry(bin_rows = <<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
+    rest = :erlang.binary_part(bin_rows, {len + 1, (byte_size(bin_rows) - (len + 1))})
+    rings = :erlang.binary_part(rings_and_rest, {0, len - 13})
+    coordinates = decode_rings(rings)
+
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{srid: srid, coordinates: coordinates} | acc])
+  end
+
+  ### GEOMETRY HELPERS
+
+  defp decode_rings(bitstring, rings \\ [])
+  defp decode_rings(<< num_points::32-little, points_and_rest::bits >>, rings) do
+    points_len = num_points * 16
+    points = :erlang.binary_part(points_and_rest, {0, points_len}) |> decode_points
+    rest = :erlang.binary_part(points_and_rest, {points_len, (byte_size(points_and_rest) - points_len)})
+    decode_rings(rest, [points | rings])
+  end
+  defp decode_rings(<<>>, rings), do: :lists.reverse(rings)
+
+  defp decode_points(points) when is_bitstring(points) do
+    for << x::little-float-64, y::little-float-64 <- points >>, do: {x, y}
   end
 
   ### TEXT ROW PARSER

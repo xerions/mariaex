@@ -98,4 +98,23 @@ defmodule GeometryTest do
 
     assert query("SELECT linestring from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 0}]]
   end
+
+  # test "inserts polygon with geometry column type", context do
+  #   table = "geometry_test_insert_polygon_geometry_type"
+  #   :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+  #   point = %Mariaex.Geometry.Polygon{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 42}
+
+  #   :ok = query(~s{INSERT INTO #{table} (id, linestring) VALUES (?, ?)}, [1, point])
+
+  #   assert query("SELECT linestring from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 42}]]
+  # end
+
+  test "selects polygon", context do
+    table = "geometry_test_select_polygon"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+    :ok = query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [1, "POLYGON((0 0,10 0,10 10,0 10,0 0),(5 5,7 5,7 7,5 7, 5 5))"])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Polygon{coordinates: [[{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}], [{5.0, 5.0}, {7.0, 5.0}, {7.0, 7.0}, {5.0, 7.0}, {5.0, 5.0}]], srid: 0}]]
+  end
 end
