@@ -362,12 +362,8 @@ defmodule Mariaex.RowParser do
   defp decode_geometry(<<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64, y::little-float-64, rest::bits >>, fields, null_bitfield, acc, datetime, json_library) do
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Point{srid: srid, coordinates: {x, y}} | acc], datetime, json_library)
   end
-  defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points_and_rest::bits >>, fields, null_bitfield, acc) do
-    points_len = num_points * 16
-    points = :erlang.binary_part(points_and_rest, {0, points_len})
-    rest = :erlang.binary_part(points_and_rest, {0, (byte_size(points_and_rest) - (len - 13))})
+  defp decode_geometry(<<_len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, fields, null_bitfield, acc) do
     coordinates = decode_points(points)
-
     decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
   end
   defp decode_geometry(<<len::8-little, srid::32-little, 1::8-little, 3::32-little, _num_rings::32-little, rings_and_rest::bits >>, fields, null_bitfield, acc) do
@@ -381,17 +377,17 @@ defmodule Mariaex.RowParser do
   ### GEOMETRY HELPERS
 
   defp decode_rings(bitstring, rings \\ [])
-  defp decode_rings(<< num_points::32-little, points_and_rest::bits >>, rings) do
-    points_len = num_points * 16
-    points = :erlang.binary_part(points_and_rest, {0, points_len}) |> decode_points
-    rest = :erlang.binary_part(points_and_rest, {points_len, (byte_size(points_and_rest) - points_len)})
-    decode_rings(rest, [points | rings])
+  defp decode_rings(<< num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, rings) do
+    coordinates = decode_points(points)
+    decode_rings(rest, [coordinates | rings])
   end
   defp decode_rings(<<>>, rings), do: :lists.reverse(rings)
 
-  defp decode_points(points) when is_bitstring(points) do
-    for << x::little-float-64, y::little-float-64 <- points >>, do: {x, y}
+  defp decode_points(bitstring, points \\ [])
+  defp decode_points(<< x::little-float-64, y::little-float-64, rest::bits >>, points) do
+    decode_points(rest, [{x, y} | points])
   end
+  defp decode_points(<<>>, points), do: :lists.reverse(points)
 
   ### TEXT ROW PARSER
 
