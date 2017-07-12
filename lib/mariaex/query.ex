@@ -138,36 +138,30 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
 
-  defp encode_param(%Mariaex.Geometry.Point{coordinates: {x, y}, srid: srid} = point, _binary_as) do
-    srid = case srid do
-      srid when is_integer(srid) and srid >= 0 -> << srid::little-32 >>
-      nil -> << 0::little-32 >>
-    end
-    endian = << 1::little-8 >> # MySQL is always little-endian
-    point_type = << 1::little-32 >>
-    x = << x::little-float-64 >>
-    y = << y::little-float-64 >>
-    mysql_wkb = srid <> endian <> point_type <> x <> y
-    encode_param(mysql_wkb, :field_type_geometry)
+  defp encode_param(%Mariaex.Geometry.Point{coordinates: {x, y}, srid: srid}, _binary_as) do
+    srid = srid || 0
+    endian = 1 # MySQL is always little-endian
+    point_type = 1
+    {0, :field_type_geometry, <<25::8-little, srid::32-little, endian::8-little, point_type::32-little, x::little-float-64, y::little-float-64 >>}
   end
 
   defp encode_param(%Mariaex.Geometry.LineString{coordinates: coordinates, srid: srid}, _binary_as) do
-    srid = encode_srid(srid)
-    endian = << 1::little-8 >> # MySQL is always little-endian
-    linestring_type = << 2::little-32 >>
-    num_points = << length(coordinates)::32-little >>
-    coordinates = encode_coordinates(coordinates)
-    mysql_wkb = srid <> endian <> linestring_type <> num_points <> coordinates
+    srid = srid || 0
+    endian = 1 # MySQL is always little-endian
+    linestring_type = 2
+    num_points = length(coordinates)
+    points = encode_coordinates(coordinates)
+    mysql_wkb = << srid::32-little, endian::8-little, linestring_type::32-little, num_points::little-32 >> <> points
     encode_param(mysql_wkb, :field_type_geometry)
   end
 
   defp encode_param(%Mariaex.Geometry.Polygon{coordinates: coordinates, srid: srid}, _binary_as) do
-    srid = encode_srid(srid)
-    endian = << 1::little-8 >> # MySQL is always little-endian
-    polygon_type = << 3::little-32 >>
-    num_rings = << length(coordinates)::32-little >>
+    srid = srid || 0
+    endian = 1 # MySQL is always little-endian
+    polygon_type = 3
+    num_rings = length(coordinates)
     rings = encode_rings(coordinates)
-    mysql_wkb = srid <> endian <> polygon_type <> num_rings <> rings
+    mysql_wkb = << srid::32-little, endian::8-little, polygon_type::32-little, num_rings::little-32 >> <> rings
     encode_param(mysql_wkb, :field_type_geometry)
   end
 
