@@ -32,6 +32,17 @@ defmodule GeometryTest do
     assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[%Mariaex.Geometry.Point{coordinates: {1.0, -1.0}, srid: 42}]]
   end
 
+  test "inserts point with floats with more precision", context do
+    table = "geometry_test_insert_point_with_more_precision"
+    :ok = query("CREATE TABLE #{table} (id serial, point geometry)", [])
+
+    point = %Mariaex.Geometry.Point{srid: 42, coordinates: {51.43941067083624, -0.2010107200625902}}
+
+    :ok = query(~s{INSERT INTO #{table} (id, point) VALUES (?, ?)}, [1, point])
+
+    assert query("SELECT point from #{table} WHERE id = ?", [1]) == [[point]]
+  end
+
   test "selects point with geometry column type", context do
     table = "geometry_test_select_point_geometry_type"
     :ok = query("CREATE TABLE #{table} (id serial, point geometry)", [])
