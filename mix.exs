@@ -25,7 +25,7 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.0"},
-     {:db_connection, "~> 1.1"},
+     {:db_connection, "~> 1.1", github: "elixir-ecto/db_connection", ref: "4947966"},
      {:coverex, "~> 1.4.10", only: :test},
      {:ex_doc, ">= 0.0.0", only: :dev},
      {:poison, ">= 0.0.0", optional: true}]
