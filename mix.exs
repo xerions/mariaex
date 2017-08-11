@@ -3,7 +3,7 @@ defmodule Mariaex.Mixfile do
 
   def project do
     [app: :mariaex,
-     version: "0.8.2",
+     version: "0.8.3",
      elixir: "~> 1.2",
      deps: deps(),
      name: "Mariaex",
