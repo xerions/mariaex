@@ -1,3 +1,15 @@
+# 0.8.3
+
+* Enhancements
+  * use CLIENT_DEPRECATE_EOF flag to make decision about EOF messages
+  * travis tests on different mariadb/mysql versions
+  * introduce :query_type prepare option
+  * fix typo in protocol handle_declare
+
+* Bug fixes
+  * fix close socket when disconnect failed
+  * do disconnect on handshake error
+
 # 0.8.2
 
 * Enhancements
