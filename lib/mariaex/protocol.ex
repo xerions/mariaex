@@ -672,7 +672,13 @@ defmodule Mariaex.Protocol do
 
   defp clean_state(state, flags) do
     status = transaction_status(state, flags)
-    %{state | state: :running, state_data: nil, transaction_status: status}
+    state = %{state | state: :running, state_data: nil, transaction_status: status}
+    case status do
+      :idle ->
+        clean_cursors(state)
+      :transaction ->
+        state
+    end
   end
 
   defp transaction_status(_, flags) when is_integer(flags) do
@@ -685,6 +691,13 @@ defmodule Mariaex.Protocol do
   end
   defp transaction_status(%{transaction_status: status}, nil) do
     status
+  end
+
+  defp clean_cursors(%{cursors: cursors} = state) do
+    for {_ref, {_status, id, _info}} <- cursors, is_integer(id) do
+      msg_send(stmt_close(command: com_stmt_close(), statement_id: id), state, 0)
+    end
+    %{state | cursors: %{}}
   end
 
   @doc """
@@ -732,8 +745,8 @@ defmodule Mariaex.Protocol do
       {:close_prepare_declare, id, query} ->
         prepare_declare(&close_prepare(id, query, &1), params, opts, state)
       {:text, _} ->
-        cursor = %Cursor{statement_id: :text, params: params, ref: make_ref()}
-        {:ok, cursor, state}
+        cursor = %Cursor{statement_id: :text, ref: make_ref()}
+        declare(cursor, params, state)
     end
   end
 
@@ -761,8 +774,14 @@ defmodule Mariaex.Protocol do
 
   defp declare(id, params, opts, state) do
     max_rows = Keyword.get(opts, :max_rows, @max_rows)
-    cursor = %Cursor{statement_id: id, params: params, ref: make_ref(), max_rows: max_rows}
-    {:ok, cursor, state}
+    cursor = %Cursor{statement_id: id, ref: make_ref(), max_rows: max_rows}
+    declare(cursor, params, state)
+  end
+
+  defp declare(%Cursor{ref: ref, statement_id: id} = cursor, params, state) do
+    state = put_in(state.cursors[ref], {:first, id, params})
+    # close cursor if idle
+    {:ok, cursor, clean_state(state, nil)}
   end
 
   defp prepare_declare(prepare, params, opts, state) do
@@ -782,28 +801,59 @@ defmodule Mariaex.Protocol do
     Cache.take(cache, name)
   end
 
-  def handle_first(query, %Cursor{statement_id: :text, params: params}, opts, state) do
+  def handle_fetch(query, cursor, opts, state) do
+    %Cursor{ref: ref, statement_id: id} = cursor
+    %{cursors: cursors} = state
+    case cursors do
+      %{^ref => {:first, _, params}} ->
+        first(query, cursor, params, opts, state) |> fetch_result(ref, id)
+      %{^ref => {:cont, _, columns}} ->
+        next(query, cursor, columns, state) |> fetch_result(ref, id)
+      %{^ref => {:halt, _, columns}} ->
+        # cursor finished, empty result
+        result = %Mariaex.Result{rows: [], num_rows: 0}
+        {:halt, {result, columns}, state}
+      %{} ->
+        msg = "could not find active cursor: #{inspect cursor}"
+        {:error, Mariaex.Error.exception(msg), state}
+    end
+  end
+
+  defp fetch_result({:cont, {_, columns} = res, state}, ref, id) do
+    {:cont, res, put_in(state.cursors[ref], {:cont, id, columns})}
+  end
+  defp fetch_result({:halt, {_, columns} = res, state}, ref, id) do
+    {:halt, res, put_in(state.cursors[ref], {:halt, id, columns})}
+  end
+  defp fetch_result({:error, _, _} = error, _ref, _id) do
+    error
+  end
+  defp fetch_result({:disconnect, _, _} = disconnect, _ref, _id) do
+    disconnect
+  end
+
+  defp first(query, %Cursor{statement_id: :text}, params, opts, state) do
     case handle_execute(query, params, opts, state) do
       {:ok, result, state} ->
-        {:deallocate, result, state}
+        {:halt, result, state}
       other ->
         other
     end
   end
-  def handle_first(query, %Cursor{statement_id: id, ref: ref, params: params}, _, state) do
+  defp first(query, %Cursor{statement_id: id}, params, _, state) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_read_only, iteration_count: 1), state, 0)
-    binary_first_recv(state, ref, query)
+    binary_first_recv(state, query)
   end
 
-  defp binary_first_recv(state, ref, query) do
+  defp binary_first_recv(state, query) do
     case binary_first_recv(state) do
       {:eof, columns, flags, state} ->
-        binary_first_resultset(state, query, ref, columns, [], flags)
+        binary_first_resultset(state, query, columns, [], flags)
       {:resultset, columns, rows, flags, state} ->
-        binary_first_resultset(state, query, ref, columns, rows, flags)
+        binary_first_resultset(state, query, columns, rows, flags)
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         {:ok, result, state} = handle_ok_packet(packet, query, state)
-        {:deallocate, result, state}
+        {:halt, result, state}
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
@@ -820,36 +870,34 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_first_resultset(state, query, ref, columns, rows, flags) do
+  defp binary_first_resultset(state, query, columns, rows, flags) do
     cond do
       (flags &&& @server_more_results_exists) == @server_more_results_exists ->
         binary_first_more(state, query, columns, rows)
       (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
-        %{cursors: cursors} = state
-        state = clean_state(%{state | cursors: Map.put(cursors, ref, columns)}, flags)
-        {:ok, {%Mariaex.Result{rows: rows, connection_id: state.connection_id}, columns}, state}
+        result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
+        {:cont, {result, columns}, clean_state(state, flags)}
       true ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
-        {:deallocate, {result, columns}, clean_state(state, flags)}
+        {:halt, {result, columns}, clean_state(state, flags)}
     end
   end
 
   defp binary_first_more(state, query, columns, rows) do
     case binary_query_more(state, query, columns, rows) do
       {:ok, res, state} ->
-        {:deallocate, res, state}
+        {:halt, res, state}
       other ->
         other
     end
   end
 
-  def handle_next(query, %Cursor{statement_id: id, ref: ref, max_rows: max_rows}, _, state) do
+  defp next(query, %Cursor{statement_id: id, max_rows: max_rows}, columns, state) do
     msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
-    binary_next_recv(state, ref, query)
+    binary_next_recv(state, query, columns)
   end
 
-  defp binary_next_recv(%{cursors: cursors} = state, ref, query) do
-    columns = Map.fetch!(cursors, ref)
+  defp binary_next_recv(state, query, columns) do
     case bin_rows_recv(state, columns) do
       {:eof, rows, flags, state} ->
         binary_next_resultset(state, columns, rows, flags)
@@ -864,19 +912,23 @@ defmodule Mariaex.Protocol do
     cond do
       (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
-        {:deallocate, {result, columns}, clean_state(state, flags)}
+        {:halt, {result, columns}, clean_state(state, flags)}
       (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
-        {:ok, {result, columns}, clean_state(state, flags)}
+        {:cont, {result, columns}, clean_state(state, flags)}
     end
   end
 
-  def handle_deallocate(_, %Cursor{statement_id: :text}, _, state) do
-    {:ok, nil, state}
-  end
-  def handle_deallocate(query, %Cursor{statement_id: id, ref: ref}, _, state) do
-    %{cursors: cursors} = state
-    deallocate(id, query, %{state | cursors: Map.delete(cursors, ref)})
+  def handle_deallocate(query, cursor, _, state) do
+    %Cursor{ref: ref, statement_id: id} = cursor
+    case pop_in(state.cursors[ref]) do
+      {nil, state} ->
+        {:ok, nil, state}
+      {_exists, state} when id == :text ->
+        {:ok, nil, state}
+      {_exists, state} ->
+        deallocate(id, query, state)
+    end
   end
 
   defp deallocate(id, query, state) do
