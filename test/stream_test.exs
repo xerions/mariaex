@@ -17,9 +17,8 @@ defmodule StreamTest do
 
   test "simple text stream", context do
     assert Mariaex.transaction(context[:pid], fn(conn) ->
-      stream = Mariaex.stream(conn, "SELECT * FROM stream", [], [])
-      assert [%Mariaex.Result{num_rows: 0, rows: []},
-              %Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}] =
+      stream = Mariaex.stream(conn, "SELECT * FROM stream", [], [query_type: :text])
+      assert [%Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}] =
         Enum.to_list(stream)
       :done
     end) == {:ok, :done}
@@ -145,6 +144,80 @@ defmodule StreamTest do
       assert %Mariaex.Result{rows: [[42]]} = Mariaex.query!(conn, "SELECT 42", [])
       :done
     end) == {:ok, :done}
+  end
+
+  test "simple text cursor", context do
+      query = %Mariaex.Query{type: :text, statement: "SELECT * FROM stream",
+                             ref: make_ref(), num_params: 0}
+    assert {:ok, cursor} = Mariaex.transaction(context[:pid], fn(conn) ->
+      assert {:ok, cursor} = DBConnection.declare(conn, query, [])
+      assert {:halt, %Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}} = DBConnection.fetch(conn, query, cursor)
+
+      # no results once halt, don't re-execute
+      assert {:halt, %Mariaex.Result{num_rows: 0, rows: []}} = DBConnection.fetch(conn, query, cursor)
+      cursor
+    end)
+
+    pid = context[:pid]
+
+    # cursor gets removed when transaction ends
+    assert_raise Mariaex.Error, ~r"could not find active cursor",
+      fn -> DBConnection.fetch!(pid, query, cursor) end
+
+    # deallocate should never fail
+    assert {:ok, _} = DBConnection.deallocate(pid, query, cursor)
+  end
+
+  test "simple unnamed prepared cursor", context do
+    query = prepare("", "SELECT * FROM stream")
+    assert {:ok, cursor} = Mariaex.transaction(context[:pid], fn(conn) ->
+      cursor = DBConnection.declare!(conn, query, [])
+      assert {:cont, %Mariaex.Result{num_rows: 0, rows: []}} =
+        DBConnection.fetch(conn, query, cursor)
+      assert {:halt, %Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}} =
+        DBConnection.fetch(conn, query, cursor)
+
+      # no results once halt, don't re-execute
+      assert {:halt, %Mariaex.Result{num_rows: 0, rows: []}} = DBConnection.fetch(conn, query, cursor)
+      cursor
+    end)
+
+    pid = context[:pid]
+
+    # cursor gets removed when transaction ends
+    assert_raise Mariaex.Error, ~r"could not find active cursor",
+      fn -> DBConnection.fetch!(pid, query, cursor) end
+
+    # deallocate should never fail
+    assert {:ok, _} = DBConnection.deallocate(pid, query, cursor)
+
+    assert [[1, "foo"], [2, "bar"]] = execute(query, [])
+  end
+
+  test "simple named prepared cursor", context do
+    query = prepare("stream", "SELECT * FROM stream")
+    assert {:ok, cursor} = Mariaex.transaction(context[:pid], fn(conn) ->
+      cursor = DBConnection.declare!(conn, query, [])
+      assert {:cont, %Mariaex.Result{num_rows: 0, rows: []}} =
+        DBConnection.fetch(conn, query, cursor)
+      assert {:halt, %Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}} =
+        DBConnection.fetch(conn, query, cursor)
+
+      # no results once halt, don't re-execute
+      assert {:halt, %Mariaex.Result{num_rows: 0, rows: []}} = DBConnection.fetch(conn, query, cursor)
+      cursor
+    end)
+
+    pid = context[:pid]
+
+    # cursor gets removed when transaction ends
+    assert_raise Mariaex.Error, ~r"could not find active cursor",
+      fn -> DBConnection.fetch!(pid, query, cursor) end
+
+    # deallocate should never fail
+    assert {:ok, _} = DBConnection.deallocate(pid, query, cursor)
+
+    assert [[1, "foo"], [2, "bar"]] = execute(query, [])
   end
 
   defp connect() do

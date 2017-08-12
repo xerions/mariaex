@@ -35,5 +35,5 @@ end
 
 defmodule Mariaex.Cursor do
   @moduledoc false
-  defstruct [:ref, :statement_id, :params, max_rows: 0]
+  defstruct [:ref, :statement_id, max_rows: 0]
 end
