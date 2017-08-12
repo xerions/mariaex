@@ -931,11 +931,9 @@ defmodule Mariaex.Protocol do
   def handle_begin(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :idle ->
-        name = @reserved_prefix <> "BEGIN"
-        handle_transaction(name, :begin, opts, s)
+        handle_transaction("BEGIN", s)
       :savepoint when status == :transaction ->
-        name = @reserved_prefix <> "SAVEPOINT mariaex_savepoint"
-        handle_savepoint([name], [:savepoint], opts, s)
+        handle_transaction("SAVEPOINT mariaex_savepoint", s)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -947,11 +945,9 @@ defmodule Mariaex.Protocol do
   def handle_commit(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :transaction ->
-        name = @reserved_prefix <> "COMMIT"
-        handle_transaction(name, :commit, opts, s)
+        handle_transaction("COMMIT", s)
       :savepoint when status == :transaction ->
-        name = @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"
-        handle_savepoint([name], [:release], opts, s)
+        handle_transaction("RELEASE SAVEPOINT mariaex_savepoint", s)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -963,12 +959,11 @@ defmodule Mariaex.Protocol do
   def handle_rollback(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :transaction ->
-        name = @reserved_prefix <> "ROLLBACK"
-        handle_transaction(name, :rollback, opts, s)
+        handle_transaction("ROLLBACK", s)
       :savepoint when status == :transaction ->
-        names = [@reserved_prefix <> "ROLLBACK TO SAVEPOINT mariaex_savepoint",
-                 @reserved_prefix <> "RELEASE SAVEPOINT mariaex_savepoint"]
-        handle_savepoint(names, [:rollback, :release], opts, s)
+        rollback_release =
+          "ROLLBACK TO SAVEPOINT mariaex_savepoint; RELEASE SAVEPOINT mariaex_savepoint"
+        handle_transaction(rollback_release, s)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -981,24 +976,29 @@ defmodule Mariaex.Protocol do
     {status, state}
   end
 
-  defp handle_transaction(name, cmd, opts, state) do
-    query = %Query{type: :text, name: name, statement: to_string(cmd), reserved?: true}
-    handle_execute(query, [], opts, state)
+  defp handle_transaction(statement, state) do
+    state
+    |> send_text_query(statement)
+    |> transaction_recv()
   end
 
-  defp handle_savepoint(names, cmds, opts, state) do
-    Enum.zip(names, cmds) |> Enum.reduce({:ok, nil, state},
-      fn({@reserved_prefix <> name, _cmd}, {:ok, _, state}) ->
-        query = %Query{type: :text, name: @reserved_prefix <> name, statement: name}
-        case handle_execute(query, [], opts, state) do
-          {:ok, res, state} ->
-            {:ok, res, state}
-          other ->
-            other
-        end
-        ({_name, _cmd}, {:error, _, _} = error) ->
-          error
-    end)
+  defp transaction_recv(state) do
+    case msg_recv(state) do
+      {:ok, packet(msg: ok_resp(status_flags: flags)), state}
+          when (flags &&& @server_more_results_exists) == @server_more_results_exists ->
+        # rollback/release has multiple results
+        transaction_recv(state)
+      {:ok, packet(msg: ok_resp(status_flags: flags)), state} ->
+        result = %Mariaex.Result{columns: [], rows: nil, num_rows: 0,
+          last_insert_id: 0}
+        {:ok, result, clean_state(state, flags)}
+      {:ok, packet(msg: error_resp(error_code: code, error_message: message)), state} ->
+        err = %Mariaex.Error{mariadb: %{code: code, message: message}}
+        # connection in bad state and unlikely to recover
+        {:disconnect, err, state}
+      {:error, reason} ->
+        recv_error(reason, state)
+    end
   end
 
   defp recv_error(reason, %{sock: {sock_mod, _}} = state) do
