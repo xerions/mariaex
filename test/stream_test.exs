@@ -220,6 +220,24 @@ defmodule StreamTest do
     assert [[1, "foo"], [2, "bar"]] = execute(query, [])
   end
 
+  test "fetch fetches max_rows", context do
+    query = prepare("", "SELECT * FROM stream")
+    assert Mariaex.transaction(context[:pid], fn(conn) ->
+      cursor = DBConnection.declare!(conn, query, [])
+      assert {:cont, %Mariaex.Result{num_rows: 0, rows: []}} =
+        DBConnection.fetch(conn, query, cursor)
+      assert {:cont, %Mariaex.Result{num_rows: 1, rows: [[1, "foo"]]}} =
+        DBConnection.fetch(conn, query, cursor, [max_rows: 1])
+      assert {:ok, _} = DBConnection.deallocate(conn, query, cursor)
+
+      assert %Mariaex.Result{rows: [[1, "foo"], [2, "bar"]]} =
+        Mariaex.execute!(conn, query, [])
+      :done
+    end) == {:ok, :done}
+
+    assert [[1, "foo"], [2, "bar"]] = execute(query, [])
+  end
+
   defp connect() do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
     Mariaex.Connection.start_link(opts)

@@ -732,14 +732,15 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  def handle_declare(query, params, opts, state) do
+  def handle_declare(query, params, _, state) do
     case declare_lookup(query, state) do
       {:declare, id} ->
-        declare(id, params, opts, state)
+        cursor = %Cursor{statement_id: id, ref: make_ref()}
+        declare(cursor, params, state)
       {:prepare_declare, query} ->
-        prepare_declare(&prepare(query, &1), params, opts, state)
+        prepare_declare(&prepare(query, &1), params, state)
       {:close_prepare_declare, id, query} ->
-        prepare_declare(&close_prepare(id, query, &1), params, opts, state)
+        prepare_declare(&close_prepare(id, query, &1), params, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, ref: make_ref()}
         declare(cursor, params, state)
@@ -768,23 +769,18 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp declare(id, params, opts, state) do
-    max_rows = Keyword.get(opts, :max_rows, @max_rows)
-    cursor = %Cursor{statement_id: id, ref: make_ref(), max_rows: max_rows}
-    declare(cursor, params, state)
-  end
-
   defp declare(%Cursor{ref: ref, statement_id: id} = cursor, params, state) do
     state = put_in(state.cursors[ref], {:first, id, params})
     # close cursor if idle
     {:ok, cursor, clean_state(state, nil)}
   end
 
-  defp prepare_declare(prepare, params, opts, state) do
+  defp prepare_declare(prepare, params, state) do
     case prepare.(state) do
       {:ok, query, state} ->
         id = prepare_declare_lookup(query, state)
-        declare(id, params, opts, state)
+        cursor = %Cursor{statement_id: id, ref: make_ref()}
+        declare(cursor, params, state)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -804,7 +800,7 @@ defmodule Mariaex.Protocol do
       %{^ref => {:first, _, params}} ->
         first(query, cursor, params, opts, state) |> fetch_result(ref, id)
       %{^ref => {:cont, _, columns}} ->
-        next(query, cursor, columns, state) |> fetch_result(ref, id)
+        next(query, cursor, columns, opts, state) |> fetch_result(ref, id)
       %{^ref => {:halt, _, columns}} ->
         # cursor finished, empty result
         result = %Mariaex.Result{rows: [], num_rows: 0}
@@ -888,7 +884,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp next(query, %Cursor{statement_id: id, max_rows: max_rows}, columns, state) do
+  defp next(query, %Cursor{statement_id: id}, columns, opts, state) do
+    max_rows = Keyword.get(opts, :max_rows, @max_rows)
     msg_send(stmt_fetch(command: com_stmt_fetch(), statement_id: id, num_rows: max_rows), state, 0)
     binary_next_recv(state, query, columns)
   end
