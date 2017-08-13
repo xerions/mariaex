@@ -12,7 +12,6 @@ defmodule Mariaex.Protocol do
   use DBConnection
   use Bitwise
 
-  @reserved_prefix "MARIAEX_"
   @timeout 5000
   @cache_size 100
   @max_rows 500
@@ -320,9 +319,6 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_prepare(%Query{name: @reserved_prefix <> _} = query, _, s) do
-    reserved_error(query, s)
-  end
   def handle_prepare(%Query{type: nil} = query, opts, s) do
     case handle_prepare(%Query{query | type: :binary}, opts, s) do
       {:error,  %Mariaex.Error{mariadb: %{code: 1295}}, s} ->
@@ -436,9 +432,6 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_execute(%Query{name: @reserved_prefix <> _, reserved?: false} = query, _, s) do
-    reserved_error(query, s)
-  end
   def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
     send_text_query(state, statement) |> text_query_recv(query)
   end
@@ -703,9 +696,6 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_close(%Query{name: @reserved_prefix <> _ , reserved?: false} = query, _, s) do
-    reserved_error(query, s)
-  end
   def handle_close(%Query{type: :text}, _, s) do
     {:ok, nil, s}
   end
@@ -1239,10 +1229,5 @@ defmodule Mariaex.Protocol do
       nil ->
         {:error, error, clean_state(s, nil)}
     end
-  end
-
-  defp reserved_error(query, s) do
-    error = ArgumentError.exception("query #{inspect query} uses reserved name")
-    {:error, error, s}
   end
 end
