@@ -185,7 +185,7 @@ defmodule Mariaex.Protocol do
         {:error, error}
     end
   end
-  defp handle_handshake(packet(seqnum: seqnum, 
+  defp handle_handshake(packet(seqnum: seqnum,
                                msg: handshake(capability_flags_1: flag1,
                                               capability_flags_2: flag2,
                                               plugin: plugin) = handshake) = _packet,  %{opts: opts}, s) do
@@ -1132,7 +1132,10 @@ defmodule Mariaex.Protocol do
   end
 
   defp abort_statement(s, query, code, message) do
-    abort_statement(s, query, %Mariaex.Error{mariadb: %{code: code, message: message}})
+    abort_statement(s, query, %Mariaex.Error{
+      mariadb: %{code: code, message: message},
+      connection_id: s.connection_id
+    })
   end
   defp abort_statement(s, query, error = %Mariaex.Error{}) do
     case query do
