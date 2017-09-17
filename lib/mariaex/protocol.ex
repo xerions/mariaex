@@ -496,7 +496,8 @@ defmodule Mariaex.Protocol do
   defp text_query_recv(state, query) do
     case text_query_recv(state) do
       {:resultset, columns, rows, _flags, state} ->
-        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+        result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
+        {:ok, {result, columns}, clean_state(state)}
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         handle_ok_packet(packet, query, state)
       {:ok, packet, state} ->
@@ -616,14 +617,16 @@ defmodule Mariaex.Protocol do
       (flags &&& @server_more_results_exists) == @server_more_results_exists ->
         binary_query_more(state, query, columns, rows)
       true ->
-        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+        result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
+        {:ok, {result, columns}, clean_state(state)}
     end
   end
 
   defp binary_query_more(state, query, columns, rows) do
     case msg_recv(state) do
       {:ok, packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), state} ->
-        result = %Mariaex.Result{rows: rows, num_rows: affected_rows, last_insert_id: last_insert_id}
+        result = %Mariaex.Result{rows: rows, num_rows: affected_rows,
+          last_insert_id: last_insert_id, connection_id: state.connection_id}
         {:ok, {result, columns}, clean_state(state)}
       {:ok, packet, state} ->
         handle_error(packet, query, state)
@@ -654,7 +657,9 @@ defmodule Mariaex.Protocol do
   end
 
   defp handle_ok_packet(packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id)), _query, s) do
-    {:ok, {%Mariaex.Result{columns: [], rows: nil, num_rows: affected_rows, last_insert_id: last_insert_id}, nil}, clean_state(s)}
+    result = %Mariaex.Result{columns: [], rows: nil, num_rows: affected_rows,
+      last_insert_id: last_insert_id, connection_id: s.connection_id}
+    {:ok, {result, nil}, clean_state(s)}
   end
 
   defp clean_state(state) do
@@ -801,9 +806,9 @@ defmodule Mariaex.Protocol do
       (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
         %{cursors: cursors} = state
         state = clean_state(%{state | cursors: Map.put(cursors, ref, columns)})
-        {:ok, {%Mariaex.Result{rows: rows}, columns}, state}
+        {:ok, {%Mariaex.Result{rows: rows, connection_id: state.connection_id}, columns}, state}
       true ->
-        {:deallocate, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+        {:deallocate, {%Mariaex.Result{rows: rows, connection_id: state.connection_id}, columns}, clean_state(state)}
     end
   end
 
@@ -836,9 +841,9 @@ defmodule Mariaex.Protocol do
   defp binary_next_resultset(state, columns, rows, flags) do
     cond do
       (flags &&& @server_status_last_row_sent) == @server_status_last_row_sent ->
-        {:deallocate, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+        {:deallocate, {%Mariaex.Result{rows: rows, connection_id: state.connection_id}, columns}, clean_state(state)}
       (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
-        {:ok, {%Mariaex.Result{rows: rows}, columns}, clean_state(state)}
+        {:ok, {%Mariaex.Result{rows: rows, connection_id: state.connection_id}, columns}, clean_state(state)}
     end
   end
 
