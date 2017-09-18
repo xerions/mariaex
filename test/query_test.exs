@@ -239,11 +239,15 @@ defmodule QueryTest do
 
     insert = ~s{INSERT INTO #{table} (id, d) VALUES (?, ?)}
     :ok = query(insert, [1, date0])
-    :ok = query(insert, [2, date1])
 
     assert query("SELECT d FROM #{table} WHERE id = 1", []) == [[date0]]
     assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [[date0]]
-    assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [[date1]]
+
+    # MySQL 5.7 prohibits zero dates on strict mode
+    unless System.get_env("MYSQL_5_7") === "true" do
+      :ok = query(insert, [2, date1])
+      assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [[date1]]
+    end
   end
 
   test "encode and decode time", context do
@@ -291,7 +295,10 @@ defmodule QueryTest do
     timestamp_with_msec = {date, {13, 32, 15, 12}}
     table = "test_timestamps"
 
-    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
+    # MySQL 5.7 requests explicit defaults for timestamp.
+    # ref. https://dev.mysql.com/doc/refman/5.7/en/server-system-variables.html#sysvar_explicit_defaults_for_timestamp
+    # There can be only one timestamp column with CURRENT_TIMESTAMP in default, so ts2 default value set to 2000-01-01 00:00:00
+    sql = "CREATE TABLE #{table} (id int, ts1 timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, ts2 timestamp NOT NULL DEFAULT '2000-01-01 00:00:00');"
     :ok = query(sql, [])
 
     insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
@@ -301,7 +308,12 @@ defmodule QueryTest do
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
     assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [[timestamp, {date, {13, 32, 15, 0}}]]
     assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [[timestamp, {date, {13, 32, 15, 0}}]]
-    assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [[{{0, 0, 0}, {0, 0, 0, 0}}]]
+
+    # MySQL 5.7 prohibits zero dates on strict mode
+    unless System.get_env("MYSQL_5_7") === "true" do
+      assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [[{{0, 0, 0}, {0, 0, 0, 0}}]]
+    end
+
     assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [[{{1, 1, 1}, {0, 0, 0, 0}}]]
     assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [[{{2013, 12, 21}, {23, 1, 27, 0}}]]
     assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [[{{2013, 12, 21}, {23, 1, 27, 0}}]]
@@ -587,5 +599,15 @@ defmodule QueryTest do
     assert :ok = query(sql, [])
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'Old', '2014-08-20 18:47:00');", [])
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'New', ?);", [timestamp])
+  end
+
+  if System.get_env("MYSQL_5_7") === "true "do
+    test "support json for MySQL > 5.7.9", context do
+      opts = [json_library: Poison]
+
+      assert :ok == query("CREATE TABLE json_test (jdoc JSON)", [], opts)
+      assert :ok == query("INSERT INTO json_test VALUES(?)", [%{"test" => "test"}], opts)
+      assert [[%{"test" => "test"}]] == query("SELECT * FROM json_test", [], opts)
+    end
   end
 end
