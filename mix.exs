@@ -10,7 +10,12 @@ defmodule Mariaex.Mixfile do
      source_url: "https://github.com/liveforeverx/mariaex",
      test_coverage: [tool: Coverex.Task, coveralls: true],
      description: description(),
-     package: package()]
+     package: package(),
+     docs: [
+      main: "Mariaex",
+      extras: ["README.md"]
+     ]
+    ]
   end
 
   # Configuration for the OTP application
