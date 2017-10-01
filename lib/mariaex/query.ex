@@ -111,6 +111,20 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     bin = Decimal.to_string(value, :normal)
     {0, :field_type_newdecimal, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
   end
+
+  defp encode_param(%Date{year: year, month: month, day: day}, _binary_as),
+    do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
+  defp encode_param(%Time{hour: hour, minute: min, second: sec, microsecond: {0, 0}}, _binary_as),
+    do: {0, :field_type_time, << 8 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little >>}
+  defp encode_param(%Time{hour: hour, minute: min, second: sec, microsecond: {msec, _}}, _binary_as),
+    do: {0, :field_type_time, << 12 :: 8-little, 0 :: 8-little, 0 :: 32-little, hour :: 8-little, min :: 8-little, sec :: 8-little, msec :: 32-little>>}
+  defp encode_param(%NaiveDateTime{year: year, month: month, day: day,
+                                   hour: hour, minute: min, second: sec, microsecond: {0, 0}}, _binary_as),
+    do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
+  defp encode_param(%NaiveDateTime{year: year, month: month, day: day,
+                                   hour: hour, minute: min, second: sec, microsecond: {msec, _}}, _binary_as),
+    do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
+
   defp encode_param({year, month, day}, _binary_as),
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}
   defp encode_param({hour, min, sec, 0}, _binary_as),
@@ -123,6 +137,7 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     do: {0, :field_type_datetime, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
   defp encode_param({{year, month, day}, {hour, min, sec, msec}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
+
   defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 

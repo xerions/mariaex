@@ -64,6 +64,8 @@ defmodule Mariaex do
      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:name` - A name to register the started process (see the `:name` option
     in `GenServer.start_link/3`).
+    * `:datetime` - How datetimes should be returned. `:structs` for Elixir v1.3
+      calendar types or `:tuples` for the backwards compatible tuples
 
   ## Function signatures
 

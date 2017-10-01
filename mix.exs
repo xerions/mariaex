@@ -3,8 +3,8 @@ defmodule Mariaex.Mixfile do
 
   def project do
     [app: :mariaex,
-     version: "0.8.3",
-     elixir: "~> 1.2",
+     version: "0.9.0-dev",
+     elixir: "~> 1.3",
      deps: deps(),
      name: "Mariaex",
      source_url: "https://github.com/liveforeverx/mariaex",

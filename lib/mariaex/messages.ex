@@ -229,32 +229,32 @@ defmodule Mariaex.Messages do
     do: {nil, rest}
 
   def decode_bin_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>,
-                      fields, nullbin_size, rows) do
+                      fields, nullbin_size, rows, datetime) do
     case body do
       <<0 :: 8, nullbin::size(nullbin_size)-little-unit(8), values :: binary>> ->
-        row = Mariaex.RowParser.decode_bin_rows(values, fields, nullbin)
-        decode_bin_rows(rest, fields, nullbin_size, [row | rows])
+        row = Mariaex.RowParser.decode_bin_rows(values, fields, nullbin, datetime)
+        decode_bin_rows(rest, fields, nullbin_size, [row | rows], datetime)
       body ->
         msg = decode_msg(body, :bin_rows)
         {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
     end
   end
-  def decode_bin_rows(<<rest :: binary>>, _fields, _nullbin_size, rows) do
+  def decode_bin_rows(<<rest :: binary>>, _fields, _nullbin_size, rows, _datetime) do
     {:more, rows, rest}
   end
 
   def decode_text_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>,
-                      fields, rows) do
+                      fields, rows, datetime) do
     case body do
       << 254 :: 8, _ :: binary >> = body when byte_size(body) < 9 ->
         msg = decode_msg(body, :text_rows)
         {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
       body ->
-        row = Mariaex.RowParser.decode_text_rows(body, fields)
-        decode_text_rows(rest, fields, [row | rows])
+        row = Mariaex.RowParser.decode_text_rows(body, fields, datetime)
+        decode_text_rows(rest, fields, [row | rows], datetime)
     end
   end
-  def decode_text_rows(<<rest :: binary>>, _fields, rows) do
+  def decode_text_rows(<<rest :: binary>>, _fields, rows, _datetime) do
     {:more, rows, rest}
   end
 
@@ -280,6 +280,6 @@ defmodule Mariaex.Messages do
                           << contents :: size(length_nul_terminated)-binary, 0 :: 8 >> -> contents
                           contents -> contents
                         end
-    {String.strip(auth_plugin_data2, 0), next}
+    {String.trim(auth_plugin_data2, "\0"), next}
   end
 end

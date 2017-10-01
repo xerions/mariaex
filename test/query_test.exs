@@ -2,9 +2,11 @@ defmodule QueryTest do
   use ExUnit.Case, async: true
   import Mariaex.TestHelper
 
-  setup do
-    opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", cache_size: 2, backoff_type: :stop]
-    {:ok, pid} = Mariaex.Connection.start_link(opts)
+  @opts [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", cache_size: 2, backoff_type: :stop]
+
+  setup context do
+    connection_opts = context[:connection_opts] || []
+    {:ok, pid} = Mariaex.Connection.start_link(connection_opts ++ @opts)
     # remove all modes for this session to have the same behaviour on different versions of mysql/mariadb
     {:ok, _} = Mariaex.Connection.query(pid, "SET SESSION sql_mode = \"\";")
     {:ok, [pid: pid]}
@@ -230,8 +232,8 @@ defmodule QueryTest do
   end
 
   test "encode and decode date", context do
-    date0 = {2010, 10, 17}
-    date1 = {0, 0, 0}
+    date0 = ~D[2010-10-17]
+    date1 = ~D[0000-01-01]
     table = "test_dates"
 
     sql = ~s{CREATE TABLE #{table} (id int, d date)}
@@ -247,9 +249,84 @@ defmodule QueryTest do
   end
 
   test "encode and decode time", context do
+    time = ~T[19:27:30]
+    time_with_msec = ~T[10:14:16.23]
+    table = "test_times"
+
+    sql = ~s{CREATE TABLE #{table} (id int, t1 time, t2 time)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, t1, t2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, time, time_with_msec])
+
+    # Time
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = 1", []) == [[~T[19:27:30], ~T[10:14:16]]]
+    assert query("SELECT t1, t2 FROM #{table} WHERE id = ?", [1]) == [[~T[19:27:30], ~T[10:14:16]]]
+    assert query("SELECT time('00:00:00')", []) == [[~T[00:00:00]]]
+  end
+
+  test "encode and decode datetime", context do
+    datetime = ~N[2010-10-17 10:10:30]
+    datetime_with_msec = ~N[2010-10-17 13:32:15.12]
+    table = "test_datetimes"
+
+    sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, datetime, datetime_with_msec])
+
+    # Datetime
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
+    assert query("SELECT dt1, dt2 FROM #{table} WHERE id = ?", [1]) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
+  end
+
+  test "encode and decode timestamp", context do
+    timestamp = ~N[2010-10-17 10:10:30]
+    timestamp_with_msec = ~N[2010-10-17 13:32:15.12]
+    table = "test_timestamps"
+
+    sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
+    :ok = query(insert, [1, timestamp, timestamp_with_msec])
+
+    # Timestamp
+    # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
+    assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [[~N[0000-01-01 00:00:00]]]
+    assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [[~N[0001-01-01 00:00:00]]]
+    assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [[~N[2013-12-21 23:01:27]]]
+    assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [[~N[2013-12-21 23:01:27]]]
+  end
+
+  @tag connection_opts: [datetime: :tuples]
+  test "encode and decode tuples date", context do
+    date0 = {2010, 10, 17}
+    date1 = {0, 0, 0}
+    table = "test_tuples_dates"
+
+    sql = ~s{CREATE TABLE #{table} (id int, d date)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, d) VALUES (?, ?)}
+    :ok = query(insert, [1, date0])
+    :ok = query(insert, [2, date1])
+
+    assert query("SELECT d FROM #{table} WHERE id = 1", []) == [[date0]]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [[date0]]
+    assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [[date1]]
+  end
+
+  @tag connection_opts: [datetime: :tuples]
+  test "encode and decode tuples time", context do
     time = {19, 27, 30, 0}
     time_with_msec = {10, 14, 16, 23}
-    table = "test_times"
+    table = "test_tuples_times"
 
     sql = ~s{CREATE TABLE #{table} (id int, t1 time, t2 time)}
     :ok = query(sql, [])
@@ -264,12 +341,13 @@ defmodule QueryTest do
     assert query("SELECT time('00:00:00')", []) == [[{0, 0, 0, 0}]]
   end
 
-  test "encode and decode datetime", context do
+  @tag connection_opts: [datetime: :tuples]
+  test "encode and decode tuples datetime", context do
     date = {2010, 10, 17}
     datetime = {date, {10, 10, 30, 0}}
     datetime_with_msec = {date, {13, 32, 15, 12}}
     datetime_no_msec = {date, {10, 10, 29}}
-    table = "test_datetimes"
+    table = "test_tuples_datetimes"
 
     sql = ~s{CREATE TABLE #{table} (id int, dt1 datetime, dt2 datetime, dt3 datetime)}
     :ok = query(sql, [])
@@ -285,11 +363,12 @@ defmodule QueryTest do
     assert query("SELECT COUNT(*) FROM #{table} WHERE dt3 = ?", [datetime_no_msec]) == [[1]]
   end
 
-  test "encode and decode timestamp", context do
+  @tag connection_opts: [datetime: :tuples]
+  test "encode and decode tuples timestamp", context do
     date = {2010, 10, 17}
     timestamp = {date, {10, 10, 30, 0}}
     timestamp_with_msec = {date, {13, 32, 15, 12}}
-    table = "test_timestamps"
+    table = "test_tuples_timestamps"
 
     sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
     :ok = query(sql, [])

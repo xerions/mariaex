@@ -20,8 +20,8 @@ defmodule Mariaex.RowParser do
     {fields, div(length(fields) + 7 + 2, 8)}
   end
 
-  def decode_bin_rows(row, fields, nullint) do
-    decode_bin_rows(row, fields, nullint >>> 2, [])
+  def decode_bin_rows(row, fields, nullint, datetime) do
+    decode_bin_rows(row, fields, nullint >>> 2, [], datetime)
   end
 
   ## Helpers
@@ -78,197 +78,252 @@ defmodule Mariaex.RowParser do
   defp type_to_atom({:bit, :field_type_bit}, _),             do: :bit
   defp type_to_atom({:null, :field_type_null}, _),           do: nil
 
-  defp decode_bin_rows(<<rest::bits>>, [_ | fields], nullint, acc) when (nullint &&& 1) === 1 do
-    decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc])
+  defp decode_bin_rows(<<rest::bits>>, [_ | fields], nullint, acc, datetime) when (nullint &&& 1) === 1 do
+    decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc], datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:string | fields], null_bitfield,  acc) do
-    decode_string(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:string | fields], null_bitfield,  acc, datetime) do
+    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint8 | fields], null_bitfield, acc) do
-    decode_uint8(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:uint8 | fields], null_bitfield, acc, datetime) do
+    decode_uint8(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int8 | fields], null_bitfield, acc) do
-    decode_int8(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:int8 | fields], null_bitfield, acc, datetime) do
+    decode_int8(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint16 | fields], null_bitfield, acc) do
-    decode_uint16(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:uint16 | fields], null_bitfield, acc, datetime) do
+    decode_uint16(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int16 | fields], null_bitfield, acc) do
-    decode_int16(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:int16 | fields], null_bitfield, acc, datetime) do
+    decode_int16(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint32 | fields], null_bitfield, acc) do
-    decode_uint32(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:uint32 | fields], null_bitfield, acc, datetime) do
+    decode_uint32(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int32 | fields], null_bitfield, acc) do
-    decode_int32(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:int32 | fields], null_bitfield, acc, datetime) do
+    decode_int32(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint64 | fields], null_bitfield, acc) do
-    decode_uint64(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:uint64 | fields], null_bitfield, acc, datetime) do
+    decode_uint64(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int64 | fields], null_bitfield, acc) do
-    decode_int64(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:int64 | fields], null_bitfield, acc, datetime) do
+    decode_int64(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:time | fields], null_bitfield, acc) do
-    decode_time(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:time | fields], null_bitfield, acc, datetime) do
+    decode_time(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:date | fields], null_bitfield, acc) do
-    decode_date(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:date | fields], null_bitfield, acc, datetime) do
+    decode_date(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:datetime | fields], null_bitfield, acc) do
-    decode_datetime(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:datetime | fields], null_bitfield, acc, datetime) do
+    decode_datetime(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:decimal | fields], null_bitfield, acc) do
-    decode_decimal(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:decimal | fields], null_bitfield, acc, datetime) do
+    decode_decimal(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:float32 | fields], null_bitfield, acc) do
-    decode_float32(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:float32 | fields], null_bitfield, acc, datetime) do
+    decode_float32(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:float64 | fields], null_bitfield, acc) do
-    decode_float64(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:float64 | fields], null_bitfield, acc, datetime) do
+    decode_float64(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:bit | fields], null_bitfield, acc) do
-    decode_string(rest, fields, null_bitfield >>> 1, acc)
+  defp decode_bin_rows(<<rest::bits>>, [:bit | fields], null_bitfield, acc, datetime) do
+    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield >>> 1, [nil | acc])
+  defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield >>> 1, [nil | acc], datetime)
   end
 
-  defp decode_bin_rows(<<>>, [], _, acc) do
+  defp decode_bin_rows(<<>>, [], _, acc, _datetime) do
     Enum.reverse(acc)
   end
 
-  defp decode_string(<<len::8, string::size(len)-binary, rest::bits>>, fields, nullint,  acc) when len <= 250 do
-    decode_bin_rows(rest, fields, nullint,  [string | acc])
+  defp decode_string(<<len::8, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) when len <= 250 do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
   end
 
-  defp decode_string(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc])
+  defp decode_string(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
   end
 
-  defp decode_string(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc])
+  defp decode_string(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
   end
 
-  defp decode_string(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>,  fields, nullint,  acc) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc])
+  defp decode_string(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>,  fields, nullint,  acc, datetime) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
   end
 
-  defp decode_float32(<<value::size(32)-float-little, rest::bits>>, fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc])
+  defp decode_float32(<<value::size(32)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
   end
 
-  defp decode_float64(<<value::size(64)-float-little, rest::bits>>, fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc])
+  defp decode_float64(<<value::size(64)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
   end
 
   defp decode_uint8(<<value::size(8)-little-unsigned, rest::bits>>,
-                    fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                    fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_int8(<<value::size(8)-little-signed, rest::bits>>,
-                   fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                   fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_uint16(<<value::size(16)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                     fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_int16(<<value::size(16)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                    fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_uint32(<<value::size(32)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                     fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_int32(<<value::size(32)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                    fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_uint64(<<value::size(64)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                     fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_int64(<<value::size(64)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc])
+                    fields, null_bitfield, acc, datetime) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
   end
 
   defp decode_decimal(<<length,  raw_value::size(length)-little-binary, rest::bits>>,
-                      fields, null_bitfield, acc) do
+                      fields, null_bitfield, acc, datetime) do
     value = Decimal.new(raw_value)
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc])
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
   end
 
   defp decode_time(<< 0::8-little, rest::bits>>,
-                   fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0, 0} | acc])
+                   fields, null_bitfield, acc, :structs) do
+    time = %Time{hour: 0, minute: 0, second: 0}
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
   end
 
   defp decode_time(<<8::8-little, _::8-little, _::32-little, hour::8-little, min::8-little, sec::8-little, rest::bits>>,
-                   fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, 0} | acc])
+                   fields, null_bitfield, acc, :structs) do
+    time = %Time{hour: hour, minute: min, second: sec}
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
   end
 
   defp decode_time(<< 12::8, _::32-little, _::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                   fields, null_bitfield, acc) do
+                   fields, null_bitfield, acc, :structs) do
+    time = %Time{hour: hour, minute: min, second: sec, microsecond: {msec, 6}}
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
+  end
 
-    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, msec} | acc])
+  defp decode_time(<< 0::8-little, rest::bits>>,
+                   fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0, 0} | acc], :tuples)
+  end
+
+  defp decode_time(<<8::8-little, _::8-little, _::32-little, hour::8-little, min::8-little, sec::8-little, rest::bits>>,
+                   fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, 0} | acc], :tuples)
+  end
+
+  defp decode_time(<< 12::8, _::32-little, _::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
+                   fields, null_bitfield, acc, :tuples) do
+
+    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, msec} | acc], :tuples)
   end
 
   defp decode_date(<< 0::8-little, rest::bits >>,
-                   fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0} | acc])
+                   fields, null_bitfield, acc, :structs) do
+    date = %Date{year: 0, month: 1, day: 1}
+    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs)
   end
 
   defp decode_date(<< 4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                   fields, null_bitfield, acc) do
-
-    decode_bin_rows(rest, fields, null_bitfield, [{year, month, day} | acc])
+                   fields, null_bitfield, acc, :structs) do
+    date = %Date{year: year, month: month, day: day}
+    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs)
   end
 
+  defp decode_date(<< 0::8-little, rest::bits >>,
+                   fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0} | acc], :tuples)
+  end
+
+  defp decode_date(<< 4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
+                   fields, null_bitfield, acc, :tuples) do
+
+    decode_bin_rows(rest, fields, null_bitfield, [{year, month, day} | acc], :tuples)
+  end
+
+
   defp decode_datetime(<< 0::8-little, rest::bits >>,
-                       fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{0, 0, 0}, {0, 0, 0, 0}} | acc])
+                       fields, null_bitfield, acc, :structs) do
+    datetime = %NaiveDateTime{year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
   end
 
   defp decode_datetime(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                       fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {0, 0, 0, 0}} | acc])
+                       fields, null_bitfield, acc, :structs) do
+    datetime = %NaiveDateTime{year: year, month: month, day: day, hour: 0, minute: 0, second: 0}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
   end
 
   defp decode_datetime(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
-                       fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, 0}} | acc])
+                       fields, null_bitfield, acc, :structs) do
+    datetime = %NaiveDateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
   end
 
   defp decode_datetime(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                       fields, null_bitfield, acc) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc])
+                       fields, null_bitfield, acc, :structs) do
+    datetime = %NaiveDateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec, microsecond: {msec, 6}}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
+  end
+
+  defp decode_datetime(<< 0::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{0, 0, 0}, {0, 0, 0, 0}} | acc], :tuples)
+  end
+
+  defp decode_datetime(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {0, 0, 0, 0}} | acc], :tuples)
+  end
+
+  defp decode_datetime(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, 0}} | acc], :tuples)
+  end
+
+  defp decode_datetime(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc], :tuples)
   end
 
   ### TEXT ROW PARSER
@@ -280,76 +335,93 @@ defmodule Mariaex.RowParser do
     end
   end
 
-  def decode_text_rows(binary, fields) do
-    decode_text_part(binary, fields, [])
+  def decode_text_rows(binary, fields, datetime) do
+    decode_text_part(binary, fields, [],  datetime)
   end
 
   ### IMPLEMENTATION
 
-  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc) when len <= 250 do
-    decode_text_rows(string, rest, fields, acc)
+  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc, datetime) when len <= 250 do
+    decode_text_rows(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc) do
-    decode_text_rows(string, rest, fields, acc)
+  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
+    decode_text_rows(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc) do
-    decode_text_rows(string, rest, fields, acc)
+  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
+    decode_text_rows(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc) do
-    decode_text_rows(string, rest, fields, acc)
+  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
+    decode_text_rows(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_part(<<>>, [], acc) do
+  defp decode_text_part(<<>>, [], acc, _datetime) do
     Enum.reverse(acc)
   end
 
-  defp decode_text_rows(string, rest, [:string | fields], acc) do
-    decode_text_part(rest, fields, [string | acc])
+  defp decode_text_rows(string, rest, [:string | fields], acc, datetime) do
+    decode_text_part(rest, fields, [string | acc], datetime)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
    when type in [:uint8, :int8, :uint16, :int16, :uint32, :int32, :uint64, :int64] do
-    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc])
+    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc], datetime)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
    when type in [:float32, :float64, :decimal] do
-    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc])
+    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc], datetime)
   end
 
-  defp decode_text_rows(string, rest, [:bit | fields], acc) do
-    decode_text_part(rest, fields, [string | acc])
+  defp decode_text_rows(string, rest, [:bit | fields], acc, datetime) do
+    decode_text_part(rest, fields, [string | acc], datetime)
   end
 
-  defp decode_text_rows(string, rest, [:time | fields], acc) do
-    decode_text_time(string, rest, fields, acc)
+  defp decode_text_rows(string, rest, [:time | fields], acc, datetime) do
+    decode_text_time(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_rows(string, rest, [:date | fields], acc) do
-    decode_text_date(string, rest, fields, acc)
+  defp decode_text_rows(string, rest, [:date | fields], acc, datetime) do
+    decode_text_date(string, rest, fields, acc, datetime)
   end
 
-  defp decode_text_rows(string, rest, [:datetime | fields], acc) do
-    decode_text_datetime(string, rest, fields, acc)
+  defp decode_text_rows(string, rest, [:datetime | fields], acc, datetime) do
+    decode_text_datetime(string, rest, fields, acc, datetime)
   end
 
   defmacrop to_int(value) do
     quote do: :erlang.binary_to_integer(unquote(value))
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc) do
-    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc])
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :structs) do
+    date = %Date{year: to_int(year), month: to_int(month), day: to_int(day)}
+    decode_text_part(rest, fields, [date | acc], :structs)
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
-    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc])
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :tuples) do
+    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc], :tuples)
+  end
+
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+    time = %Time{hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
+    decode_text_part(rest, fields, [time | acc], :structs)
+  end
+
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
+    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc) do
-    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc])
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+    datetime = %NaiveDateTime{year: to_int(year), month: to_int(month), day: to_int(day),
+                              hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
+    decode_text_part(rest, fields, [datetime | acc], :structs)
+  end
+
+  defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
+    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples)
   end
 end

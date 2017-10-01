@@ -61,6 +61,7 @@ defmodule Mariaex.Protocol do
             cache: nil,
             cursors: %{},
             seqnum: 0,
+            datetime: :structs,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
   @doc """
@@ -74,6 +75,7 @@ defmodule Mariaex.Protocol do
     host         = opts[:hostname] |> parse_host
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
+    datetime     = opts[:datetime] || :structs
 
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
@@ -85,6 +87,7 @@ defmodule Mariaex.Protocol do
                         cache: reset_cache(),
                         lru_cache: reset_lru_cache(opts[:cache_size]),
                         timeout: opts[:timeout],
+                        datetime: datetime,
                         opts: opts}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
@@ -126,7 +129,7 @@ defmodule Mariaex.Protocol do
   end
 
   defp parse_host(host) do
-    host = if is_binary(host), do: String.to_char_list(host), else: host
+    host = if is_binary(host), do: String.to_charlist(host), else: host
 
     case :inet.parse_strict_address(host) do
       {:ok, address} ->
@@ -323,8 +326,8 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  def handle_prepare(%Query{type: :binary} = query, _, s) do
-    case prepare_lookup(%Query{query | binary_as: s.binary_as}, s) do
+  def handle_prepare(%Query{type: :binary} = query, _, %{binary_as: binary_as} = s) do
+    case prepare_lookup(%Query{query | binary_as: binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
       {:prepare, query} ->
@@ -528,8 +531,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_row_decode(s, fields, rows, buffer) do
-    case decode_text_rows(buffer, fields, rows) do
+  defp text_row_decode(%{datetime: datetime} = s, fields, rows, buffer) do
+    case decode_text_rows(buffer, fields, rows, datetime) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
@@ -635,8 +638,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_row_decode(s, fields, nullbin_size, rows, buffer) do
-    case decode_bin_rows(buffer, fields, nullbin_size, rows) do
+  defp binary_row_decode(%{datetime: datetime} = s, fields, nullbin_size, rows, buffer) do
+    case decode_bin_rows(buffer, fields, nullbin_size, rows, datetime) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
@@ -1022,7 +1025,7 @@ defmodule Mariaex.Protocol do
     l |> Enum.map(&bxor(&1, extra - 64)) |> to_string
   end
 
-  defp hash(bin) when is_binary(bin), do: bin |> to_char_list |> hash
+  defp hash(bin) when is_binary(bin), do: bin |> to_charlist |> hash
   defp hash(s), do: hash(s, 1345345333, 305419889, 7)
   defp hash([c | s], n1, n2, add) do
     n1 = bxor(n1, (((band(n1, 63) + add) * c + n1 * 256)))
