@@ -243,9 +243,15 @@ defmodule QueryTest do
     :ok = query(insert, [1, date0])
     :ok = query(insert, [2, date1])
 
+    # Strings
+    assert query("SELECT cast(d AS char) FROM #{table} WHERE id = 1", []) == [["2010-10-17"]]
+    assert query("SELECT cast(d AS char) FROM #{table} WHERE id = 2", []) == [["0000-01-01"]]
+
+    # Date
     assert query("SELECT d FROM #{table} WHERE id = 1", []) == [[date0]]
     assert query("SELECT d FROM #{table} WHERE id = ?", [1]) == [[date0]]
     assert query("SELECT d FROM #{table} WHERE id = ?", [2]) == [[date1]]
+    assert query("SELECT date('0000-01-01')", []) == [[date1]]
   end
 
   test "encode and decode time", context do
@@ -258,6 +264,10 @@ defmodule QueryTest do
 
     insert = ~s{INSERT INTO #{table} (id, t1, t2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, time, time_with_msec])
+
+    # Strings
+    assert query("SELECT cast(t1 as char), cast(t2 as char) FROM #{table} WHERE id = 1", []) ==
+           [["19:27:30", "10:14:16"]]
 
     # Time
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
@@ -277,6 +287,10 @@ defmodule QueryTest do
     insert = ~s{INSERT INTO #{table} (id, dt1, dt2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, datetime, datetime_with_msec])
 
+    # Strings
+    assert query("SELECT cast(dt1 as char), cast(dt2 as char) FROM #{table} WHERE id = 1", []) ==
+           [["2010-10-17 10:10:30", "2010-10-17 13:32:15"]]
+
     # Datetime
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
     assert query("SELECT dt1, dt2 FROM #{table} WHERE id = 1", []) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
@@ -293,6 +307,10 @@ defmodule QueryTest do
 
     insert = ~s{INSERT INTO #{table} (id, ts1, ts2) VALUES (?, ?, ?)}
     :ok = query(insert, [1, timestamp, timestamp_with_msec])
+
+    # Strings
+    assert query("SELECT cast(ts1 as char), cast(ts2 as char) FROM #{table} WHERE id = 1", []) ==
+           [["2010-10-17 10:10:30", "2010-10-17 13:32:15"]]
 
     # Timestamp
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
