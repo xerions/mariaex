@@ -61,6 +61,7 @@ defmodule Mariaex.Protocol do
             cache: nil,
             cursors: %{},
             seqnum: 0,
+            json_library: Poison,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
   @doc """
@@ -80,6 +81,7 @@ defmodule Mariaex.Protocol do
       end
     connect_opts = [host, port, opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
+    json_library = Application.get_env(:mariaex, :json_library, Poison)
 
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
@@ -91,6 +93,7 @@ defmodule Mariaex.Protocol do
                         cache: reset_cache(),
                         lru_cache: reset_lru_cache(opts[:cache_size]),
                         timeout: opts[:timeout],
+                        json_library: json_library,
                         opts: opts}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
@@ -534,8 +537,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_row_decode(s, fields, rows, buffer) do
-    case decode_text_rows(buffer, fields, rows) do
+  defp text_row_decode(%{json_library: json_library} = s, fields, rows, buffer) do
+    case decode_text_rows(buffer, fields, rows, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->
@@ -641,8 +644,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_row_decode(s, fields, nullbin_size, rows, buffer) do
-    case decode_bin_rows(buffer, fields, nullbin_size, rows) do
+  defp binary_row_decode(%{json_library: json_library} = s, fields, nullbin_size, rows, buffer) do
+    case decode_bin_rows(buffer, fields, nullbin_size, rows, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->

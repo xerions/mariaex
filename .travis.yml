@@ -32,4 +32,4 @@ before_install:
     - sudo service mysql stop
     - docker pull $DB || true
     - docker run --name mariadb -p 3306:3306 -e MYSQL_ALLOW_EMPTY_PASSWORD=1 -d $DB
-script: "mix test --cover"
+script: "JSON_SUPPORT=$JSON_SUPPORT mix test --cover"

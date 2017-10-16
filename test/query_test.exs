@@ -588,4 +588,20 @@ defmodule QueryTest do
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'Old', '2014-08-20 18:47:00');", [])
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'New', ?);", [timestamp])
   end
+
+  @tag :json
+  test "encode and decode json", context do
+    map = %{"hoge" => "1", "huga" => "2"}
+    map_string = ~s|{"hoge": "1", "huga": "2"}|
+
+    table = "test_jsons"
+
+    sql = ~s{CREATE TABLE #{table} (id int, map json)}
+    :ok = query(sql, [])
+
+    insert = ~s{INSERT INTO #{table} (id, map) VALUES (?, ?)}
+    :ok = query(insert, [1, map_string])
+
+    assert query("SELECT map FROM #{table} WHERE id = 1", []) == [[map]]
+  end
 end
