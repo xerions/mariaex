@@ -395,6 +395,10 @@ defmodule Mariaex.RowParser do
     decode_text_datetime(string, rest, fields, acc, datetime, json_library)
   end
 
+  defp decode_text_rows(string, rest, [:json | fields], acc, datetime, json_library) do
+    decode_text_json(string, rest, fields, acc, datetime, json_library)
+  end
+
   defmacrop to_int(value) do
     quote do: :erlang.binary_to_integer(unquote(value))
   end
@@ -427,5 +431,10 @@ defmodule Mariaex.RowParser do
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
     _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
     decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples, json_library)
+  end
+
+  defp decode_text_json(string, rest, fields, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_text_part(rest, fields, [json | acc], datetime, json_library)
   end
 end
