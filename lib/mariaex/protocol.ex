@@ -62,6 +62,7 @@ defmodule Mariaex.Protocol do
             cursors: %{},
             seqnum: 0,
             datetime: :structs,
+            json_library: Poison,
             ssl_conn_state: :undefined  #  :undefined | :not_used | :ssl_handshake | :connected
 
   @doc """
@@ -76,6 +77,7 @@ defmodule Mariaex.Protocol do
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
     datetime     = opts[:datetime] || :structs
+    json_library = opts[:json_library] || Poison
 
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
@@ -88,6 +90,7 @@ defmodule Mariaex.Protocol do
                         lru_cache: reset_lru_cache(opts[:cache_size]),
                         timeout: opts[:timeout],
                         datetime: datetime,
+                        json_library: json_library,
                         opts: opts}
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
