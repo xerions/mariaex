@@ -66,6 +66,10 @@ defmodule Mariaex.RowParser do
     :int64
   end
 
+  defp type_to_atom({:json, :field_type_json}, _) do
+    :json
+  end
+
   defp type_to_atom({:string, _mysql_type}, _),              do: :string
   defp type_to_atom({:integer, :field_type_year}, _),        do: :uint16
   defp type_to_atom({:time, :field_type_time}, _),           do: :time

@@ -67,6 +67,8 @@ defmodule Mariaex.Messages do
             field_type_blob: 0xfc,
             field_type_var_string: 0xfd,
             field_type_string: 0xfe],
+          json:
+           [field_type_json: 0xf5],
           null:
            [field_type_null: 0x06]
          ]
