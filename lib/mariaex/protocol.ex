@@ -641,8 +641,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_row_decode(%{datetime: datetime} = s, fields, nullbin_size, rows, buffer) do
-    case decode_bin_rows(buffer, fields, nullbin_size, rows, datetime) do
+  defp binary_row_decode(%{datetime: datetime, json_library: json_library} = s, fields, nullbin_size, rows, buffer) do
+    case decode_bin_rows(buffer, fields, nullbin_size, rows, datetime, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->

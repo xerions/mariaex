@@ -231,17 +231,17 @@ defmodule Mariaex.Messages do
     do: {nil, rest}
 
   def decode_bin_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>,
-                      fields, nullbin_size, rows, datetime) do
+                      fields, nullbin_size, rows, datetime, json_library) do
     case body do
       <<0 :: 8, nullbin::size(nullbin_size)-little-unit(8), values :: binary>> ->
-        row = Mariaex.RowParser.decode_bin_rows(values, fields, nullbin, datetime)
-        decode_bin_rows(rest, fields, nullbin_size, [row | rows], datetime)
+        row = Mariaex.RowParser.decode_bin_rows(values, fields, nullbin, datetime, json_library)
+        decode_bin_rows(rest, fields, nullbin_size, [row | rows], datetime, json_library)
       body ->
         msg = decode_msg(body, :bin_rows)
         {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
     end
   end
-  def decode_bin_rows(<<rest :: binary>>, _fields, _nullbin_size, rows, _datetime) do
+  def decode_bin_rows(<<rest :: binary>>, _fields, _nullbin_size, rows, _datetime, _json_library) do
     {:more, rows, rest}
   end
 
