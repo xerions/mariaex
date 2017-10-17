@@ -246,17 +246,17 @@ defmodule Mariaex.Messages do
   end
 
   def decode_text_rows(<< len :: size(24)-little-integer, seqnum :: size(8)-integer, body :: size(len)-binary, rest :: binary>>,
-                      fields, rows, datetime) do
+                      fields, rows, datetime, json_library) do
     case body do
       << 254 :: 8, _ :: binary >> = body when byte_size(body) < 9 ->
         msg = decode_msg(body, :text_rows)
         {:ok, packet(size: len, seqnum: seqnum, msg: msg, body: body), rows, rest}
       body ->
-        row = Mariaex.RowParser.decode_text_rows(body, fields, datetime)
-        decode_text_rows(rest, fields, [row | rows], datetime)
+        row = Mariaex.RowParser.decode_text_rows(body, fields, datetime, json_library)
+        decode_text_rows(rest, fields, [row | rows], datetime, json_library)
     end
   end
-  def decode_text_rows(<<rest :: binary>>, _fields, rows, _datetime) do
+  def decode_text_rows(<<rest :: binary>>, _fields, rows, _datetime, _json_library) do
     {:more, rows, rest}
   end
 

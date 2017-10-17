@@ -534,8 +534,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_row_decode(%{datetime: datetime} = s, fields, rows, buffer) do
-    case decode_text_rows(buffer, fields, rows, datetime) do
+  defp text_row_decode(%{datetime: datetime, json_library: json_library} = s, fields, rows, buffer) do
+    case decode_text_rows(buffer, fields, rows, datetime, json_library) do
       {:ok, packet, rows, rest} ->
         {:ok, packet, rows, %{s | buffer: rest}}
       {:more, rows, rest} ->

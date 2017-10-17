@@ -339,93 +339,93 @@ defmodule Mariaex.RowParser do
     end
   end
 
-  def decode_text_rows(binary, fields, datetime) do
-    decode_text_part(binary, fields, [],  datetime)
+  def decode_text_rows(binary, fields, datetime, json_library) do
+    decode_text_part(binary, fields, [],  datetime, json_library)
   end
 
   ### IMPLEMENTATION
 
-  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc, datetime) when len <= 250 do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) when len <= 250 do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<>>, [], acc, _datetime) do
+  defp decode_text_part(<<>>, [], acc, _datetime, _json_library) do
     Enum.reverse(acc)
   end
 
-  defp decode_text_rows(string, rest, [:string | fields], acc, datetime) do
-    decode_text_part(rest, fields, [string | acc], datetime)
+  defp decode_text_rows(string, rest, [:string | fields], acc, datetime, json_library) do
+    decode_text_part(rest, fields, [string | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime, json_library)
    when type in [:uint8, :int8, :uint16, :int16, :uint32, :int32, :uint64, :int64] do
-    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc], datetime)
+    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime, json_library)
    when type in [:float32, :float64, :decimal] do
-    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc], datetime)
+    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:bit | fields], acc, datetime) do
-    decode_text_part(rest, fields, [string | acc], datetime)
+  defp decode_text_rows(string, rest, [:bit | fields], acc, datetime, json_library) do
+    decode_text_part(rest, fields, [string | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:time | fields], acc, datetime) do
-    decode_text_time(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:time | fields], acc, datetime, json_library) do
+    decode_text_time(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:date | fields], acc, datetime) do
-    decode_text_date(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:date | fields], acc, datetime, json_library) do
+    decode_text_date(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:datetime | fields], acc, datetime) do
-    decode_text_datetime(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:datetime | fields], acc, datetime, json_library) do
+    decode_text_datetime(string, rest, fields, acc, datetime, json_library)
   end
 
   defmacrop to_int(value) do
     quote do: :erlang.binary_to_integer(unquote(value))
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :structs) do
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :structs, json_library) do
     date = %Date{year: to_int(year), month: to_int(month), day: to_int(day)}
-    decode_text_part(rest, fields, [date | acc], :structs)
+    decode_text_part(rest, fields, [date | acc], :structs, json_library)
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc], :tuples)
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc], :tuples, json_library)
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs, json_library) do
     time = %Time{hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
-    decode_text_part(rest, fields, [time | acc], :structs)
+    decode_text_part(rest, fields, [time | acc], :structs, json_library)
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples)
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples, json_library)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: to_int(year), month: to_int(month), day: to_int(day),
                               hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
-    decode_text_part(rest, fields, [datetime | acc], :structs)
+    decode_text_part(rest, fields, [datetime | acc], :structs, json_library)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples)
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples, json_library)
   end
 end
