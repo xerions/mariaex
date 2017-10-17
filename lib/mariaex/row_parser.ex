@@ -150,6 +150,10 @@ defmodule Mariaex.RowParser do
     decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
+  defp decode_bin_rows(<<rest::bits>>, [:json | fields], null_bitfield, acc, datetime, json_library) do
+    decode_json(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+  end
+
   defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc, datetime, json_library) do
     decode_bin_rows(rest, fields, null_bitfield >>> 1, [nil | acc], datetime, json_library)
   end
@@ -328,6 +332,26 @@ defmodule Mariaex.RowParser do
   defp decode_datetime(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
                        fields, null_bitfield, acc, :tuples, json_library) do
     decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc], :tuples, json_library)
+  end
+
+  defp decode_json(<< len::8, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) when len <= 250 do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 252::8, len::16-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 253::8, len::24-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 254::8, len::64-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
   end
 
   ### TEXT ROW PARSER
