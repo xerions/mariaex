@@ -686,20 +686,19 @@ defmodule QueryTest do
     assert :ok = query("REPLACE INTO test_replace VALUES (1, 'New', ?);", [timestamp])
   end
 
-  if System.get_env("JSON_SUPPORT") === "true" do
-    test "encode and decode json", context do
-      map = %{"hoge" => "1", "huga" => "2"}
-      map_string = ~s|{"hoge": "1", "huga": "2"}|
+  @tag :json
+  test "encode and decode json", context do
+    map = %{"hoge" => "1", "huga" => "2"}
+    map_string = ~s|{"hoge": "1", "huga": "2"}|
 
-      table = "test_jsons"
+    table = "test_jsons"
 
-      sql = ~s{CREATE TABLE #{table} (id int, map json)}
-      :ok = query(sql, [])
+    sql = ~s{CREATE TABLE #{table} (id int, map json)}
+    :ok = query(sql, [])
 
-      insert = ~s{INSERT INTO #{table} (id, map) VALUES (?, ?)}
-      :ok = query(insert, [1, map_string])
+    insert = ~s{INSERT INTO #{table} (id, map) VALUES (?, ?)}
+    :ok = query(insert, [1, map_string])
 
-      assert query("SELECT map FROM #{table} WHERE id = 1", []) == [[map]]
-    end
+    assert query("SELECT map FROM #{table} WHERE id = 1", []) == [[map]]
   end
 end

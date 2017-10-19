@@ -1,4 +1,4 @@
-ExUnit.configure exclude: [:ssl_tests]
+ExUnit.configure exclude: [ssl_tests: :true, json: System.get_env("JSON_SUPPORT") != "true"]
 ExUnit.start()
 
 run_cmd = fn cmd ->

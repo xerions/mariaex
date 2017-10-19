@@ -102,12 +102,11 @@ defmodule TextQueryTest do
     assert(rows == [[{{1,1,1}, {0,0,0,0}}], [{{1,1,1}, {0,0,1,0}}]])
   end
 
-  if System.get_env("JSON_SUPPORT") === "true" do
-    test "select json", context do
-      opts = [json_library: Poison]
+  @tag :json
+  test "select json", context do
+    opts = [json_library: Poison]
 
-      rows = execute_text("SELECT map FROM test_text_json_query_table", [], opts)
-      assert(rows == [[%{"hoge" => "1", "huga" => "2"}], [%{"hoge" => "3", "huga" => "4"}]])
-    end
+    rows = execute_text("SELECT map FROM test_text_json_query_table", [], opts)
+    assert(rows == [[%{"hoge" => "1", "huga" => "2"}], [%{"hoge" => "3", "huga" => "4"}]])
   end
 end
