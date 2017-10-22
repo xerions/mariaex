@@ -66,7 +66,6 @@ defmodule Mariaex do
     in `GenServer.start_link/3`).
     * `:datetime` - How datetimes should be returned. `:structs` for Elixir v1.3
       calendar types or `:tuples` for the backwards compatible tuples
-    * `:json_library` - JSON Library to parse json column. (default: `Poison`)
 
   ## Function signatures
 

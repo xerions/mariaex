@@ -77,7 +77,7 @@ defmodule Mariaex.Protocol do
     connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
     datetime     = opts[:datetime] || :structs
-    json_library = opts[:json_library] || Poison
+    json_library = Application.get_env(:mariaex, :json_library, Poison)
 
     case apply(sock_mod, :connect, connect_opts) do
       {:ok, sock} ->
