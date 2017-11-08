@@ -80,6 +80,7 @@ defmodule Mariaex.RowParser do
   defp type_to_atom({:float, :field_type_float}, _),         do: :float32
   defp type_to_atom({:float, :field_type_double}, _),        do: :float64
   defp type_to_atom({:bit, :field_type_bit}, _),             do: :bit
+  defp type_to_atom({:geometry, :field_type_geometry}, _),   do: :geometry
   defp type_to_atom({:null, :field_type_null}, _),           do: nil
 
   defp decode_bin_rows(<<rest::bits>>, [_ | fields], nullint, acc, datetime, json_library) when (nullint &&& 1) === 1 do
@@ -152,6 +153,10 @@ defmodule Mariaex.RowParser do
 
   defp decode_bin_rows(<<rest::bits>>, [:json | fields], null_bitfield, acc, datetime, json_library) do
     decode_json(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+  end
+
+  defp decode_bin_rows(<<rest::bits>>, [:geometry | fields], null_bitfield, acc, datetime, json_library) do
+    decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
   defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc, datetime, json_library) do
@@ -353,6 +358,36 @@ defmodule Mariaex.RowParser do
     json = json_library.decode!(string)
     decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
   end
+
+  defp decode_geometry(<<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64, y::little-float-64, rest::bits >>, fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Point{srid: srid, coordinates: {x, y}} | acc], datetime, json_library)
+  end
+  defp decode_geometry(<<_len::8-little, srid::32-little, 1::8-little, 2::32-little, num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, fields, null_bitfield, acc) do
+    coordinates = decode_points(points)
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.LineString{srid: srid, coordinates: coordinates} | acc])
+  end
+  defp decode_geometry(<<_len::8-little, srid::32-little, 1::8-little, 3::32-little, num_rings::32-little, rest::bits >>, fields, null_bitfield, acc) do
+    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc})
+  end
+
+  ### GEOMETRY HELPERS
+
+  defp decode_rings(<< rings_and_rows::bits >>, num_rings, state) do
+    decode_rings(rings_and_rows, num_rings, state, [])
+  end
+  defp decode_rings(<< rest::bits >>, 0, {srid, fields, null_bitfield, acc}, rings) do
+    decode_bin_rows(rest, fields, null_bitfield, [%Mariaex.Geometry.Polygon{coordinates: Enum.reverse(rings), srid: srid} | acc])
+  end
+  defp decode_rings(<< num_points::32-little, points::binary-size(num_points)-unit(128), rest::bits >>, num_rings, state, rings) do
+    points = decode_points(points)
+    decode_rings(rest, num_rings - 1, state, [points | rings])
+  end
+
+  defp decode_points(points_binary, points \\ [])
+  defp decode_points(<< x::little-float-64, y::little-float-64, rest::bits >>, points) do
+    decode_points(rest, [{x, y} | points])
+  end
+  defp decode_points(<<>>, points), do: Enum.reverse(points)
 
   ### TEXT ROW PARSER
 

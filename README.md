@@ -46,3 +46,27 @@ If you want to use another library, please set `config.exs` like below.
 ```elixir
 config :mariaex, json_library: SomeLibrary
 ```
+=======
+## Data representation
+
+    MySQL                 Elixir
+    ----------            ------
+    NULL                  nil
+    TINYINT               42
+    INT                   42
+    BIGINT                42
+    FLOAT                 42.0
+    DOUBLE                42.0
+    DECIMAL               #Decimal<42.0> *
+    VARCHAR               "eric"
+    TEXT                  "eric"
+    BLOB                  <<42>>
+    DATE                  %Date{year: 2013, month: 10, day: 12}
+    TIME                  %Time{hour: 0, minute: 37, second: 14} **
+    YEAR                  2013
+    DATETIME              %DateTime{year: 2013 month: 10, day: 12, hour: 0, minute: 37, second: 14} **
+    TIMESTAMP             %DateTime{year: 2013 month: 10, day: 12, hour: 0, minute: 37, second: 14} **
+    BIT                   << 1 >>
+    GEOMETRY/POINT        %Mariaex.Geometry.Point{coordinates: {1.0, -1.0}, srid: 42}
+    GEOMETRY/LINESTRING   %Mariaex.Geometry.LineString{coordinates: [{0.0, 0.0}, {10.0, 10.0}, {20.0, 25.0}, {50.0, 60.0}], srid: 0}
+    GEOMETRY/POLYGON      %Mariaex.Geometry.Polygon{coordinates: [[{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}], [{5.0, 5.0}, {7.0, 5.0}, {7.0, 7.0}, {5.0, 7.0}, {5.0, 5.0}]], srid: 0}
