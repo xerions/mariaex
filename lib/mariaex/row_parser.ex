@@ -20,8 +20,8 @@ defmodule Mariaex.RowParser do
     {fields, div(length(fields) + 7 + 2, 8)}
   end
 
-  def decode_bin_rows(row, fields, nullint, datetime) do
-    decode_bin_rows(row, fields, nullint >>> 2, [], datetime)
+  def decode_bin_rows(row, fields, nullint, datetime, json_library) do
+    decode_bin_rows(row, fields, nullint >>> 2, [], datetime, json_library)
   end
 
   ## Helpers
@@ -66,6 +66,10 @@ defmodule Mariaex.RowParser do
     :int64
   end
 
+  defp type_to_atom({:json, :field_type_json}, _) do
+    :json
+  end
+
   defp type_to_atom({:string, _mysql_type}, _),              do: :string
   defp type_to_atom({:integer, :field_type_year}, _),        do: :uint16
   defp type_to_atom({:time, :field_type_time}, _),           do: :time
@@ -78,252 +82,276 @@ defmodule Mariaex.RowParser do
   defp type_to_atom({:bit, :field_type_bit}, _),             do: :bit
   defp type_to_atom({:null, :field_type_null}, _),           do: nil
 
-  defp decode_bin_rows(<<rest::bits>>, [_ | fields], nullint, acc, datetime) when (nullint &&& 1) === 1 do
-    decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc], datetime)
+  defp decode_bin_rows(<<rest::bits>>, [_ | fields], nullint, acc, datetime, json_library) when (nullint &&& 1) === 1 do
+    decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc], datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:string | fields], null_bitfield,  acc, datetime) do
-    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:string | fields], null_bitfield,  acc, datetime, json_library) do
+    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint8 | fields], null_bitfield, acc, datetime) do
-    decode_uint8(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:uint8 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_uint8(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int8 | fields], null_bitfield, acc, datetime) do
-    decode_int8(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:int8 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_int8(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint16 | fields], null_bitfield, acc, datetime) do
-    decode_uint16(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:uint16 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_uint16(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int16 | fields], null_bitfield, acc, datetime) do
-    decode_int16(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:int16 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_int16(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint32 | fields], null_bitfield, acc, datetime) do
-    decode_uint32(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:uint32 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_uint32(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int32 | fields], null_bitfield, acc, datetime) do
-    decode_int32(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:int32 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_int32(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:uint64 | fields], null_bitfield, acc, datetime) do
-    decode_uint64(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:uint64 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_uint64(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:int64 | fields], null_bitfield, acc, datetime) do
-    decode_int64(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:int64 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_int64(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:time | fields], null_bitfield, acc, datetime) do
-    decode_time(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:time | fields], null_bitfield, acc, datetime, json_library) do
+    decode_time(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:date | fields], null_bitfield, acc, datetime) do
-    decode_date(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:date | fields], null_bitfield, acc, datetime, json_library) do
+    decode_date(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:datetime | fields], null_bitfield, acc, datetime) do
-    decode_datetime(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:datetime | fields], null_bitfield, acc, datetime, json_library) do
+    decode_datetime(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:decimal | fields], null_bitfield, acc, datetime) do
-    decode_decimal(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:decimal | fields], null_bitfield, acc, datetime, json_library) do
+    decode_decimal(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:float32 | fields], null_bitfield, acc, datetime) do
-    decode_float32(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:float32 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_float32(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:float64 | fields], null_bitfield, acc, datetime) do
-    decode_float64(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:float64 | fields], null_bitfield, acc, datetime, json_library) do
+    decode_float64(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:bit | fields], null_bitfield, acc, datetime) do
-    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:bit | fields], null_bitfield, acc, datetime, json_library) do
+    decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield >>> 1, [nil | acc], datetime)
+  defp decode_bin_rows(<<rest::bits>>, [:json | fields], null_bitfield, acc, datetime, json_library) do
+    decode_json(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(<<>>, [], _, acc, _datetime) do
+  defp decode_bin_rows(<<rest::bits>>, [:nil | fields], null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield >>> 1, [nil | acc], datetime, json_library)
+  end
+
+  defp decode_bin_rows(<<>>, [], _, acc, _datetime, _json_library) do
     Enum.reverse(acc)
   end
 
-  defp decode_string(<<len::8, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) when len <= 250 do
-    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
+  defp decode_string(<<len::8, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime, json_library) when len <= 250 do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime, json_library)
   end
 
-  defp decode_string(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
+  defp decode_string(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime, json_library)
   end
 
-  defp decode_string(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
+  defp decode_string(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, nullint,  acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime, json_library)
   end
 
-  defp decode_string(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>,  fields, nullint,  acc, datetime) do
-    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime)
+  defp decode_string(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>,  fields, nullint,  acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, nullint,  [string | acc], datetime, json_library)
   end
 
-  defp decode_float32(<<value::size(32)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
+  defp decode_float32(<<value::size(32)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime, json_library)
   end
 
-  defp decode_float64(<<value::size(64)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
+  defp decode_float64(<<value::size(64)-float-little, rest::bits>>, fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime, json_library)
   end
 
   defp decode_uint8(<<value::size(8)-little-unsigned, rest::bits>>,
-                    fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                    fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_int8(<<value::size(8)-little-signed, rest::bits>>,
-                   fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                   fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_uint16(<<value::size(16)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                     fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_int16(<<value::size(16)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                    fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_uint32(<<value::size(32)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                     fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_int32(<<value::size(32)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                    fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_uint64(<<value::size(64)-little-unsigned, rest::bits>>,
-                     fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                     fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_int64(<<value::size(64)-little-signed, rest::bits>>,
-                    fields, null_bitfield, acc, datetime) do
-    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime)
+                    fields, null_bitfield, acc, datetime, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield , [value | acc], datetime, json_library)
   end
 
   defp decode_decimal(<<length,  raw_value::size(length)-little-binary, rest::bits>>,
-                      fields, null_bitfield, acc, datetime) do
+                      fields, null_bitfield, acc, datetime, json_library) do
     value = Decimal.new(raw_value)
-    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime)
+    decode_bin_rows(rest, fields, null_bitfield, [value | acc], datetime, json_library)
   end
 
   defp decode_time(<< 0::8-little, rest::bits>>,
-                   fields, null_bitfield, acc, :structs) do
+                   fields, null_bitfield, acc, :structs, json_library) do
     time = %Time{hour: 0, minute: 0, second: 0}
-    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs, json_library)
   end
 
   defp decode_time(<<8::8-little, _::8-little, _::32-little, hour::8-little, min::8-little, sec::8-little, rest::bits>>,
-                   fields, null_bitfield, acc, :structs) do
+                   fields, null_bitfield, acc, :structs, json_library) do
     time = %Time{hour: hour, minute: min, second: sec}
-    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs, json_library)
   end
 
   defp decode_time(<< 12::8, _::32-little, _::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                   fields, null_bitfield, acc, :structs) do
+                   fields, null_bitfield, acc, :structs, json_library) do
     time = %Time{hour: hour, minute: min, second: sec, microsecond: {msec, 6}}
-    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [time | acc], :structs, json_library)
   end
 
   defp decode_time(<< 0::8-little, rest::bits>>,
-                   fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0, 0} | acc], :tuples)
+                   fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0, 0} | acc], :tuples, json_library)
   end
 
   defp decode_time(<<8::8-little, _::8-little, _::32-little, hour::8-little, min::8-little, sec::8-little, rest::bits>>,
-                   fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, 0} | acc], :tuples)
+                   fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, 0} | acc], :tuples, json_library)
   end
 
   defp decode_time(<< 12::8, _::32-little, _::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                   fields, null_bitfield, acc, :tuples) do
+                   fields, null_bitfield, acc, :tuples, json_library) do
 
-    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, msec} | acc], :tuples)
+    decode_bin_rows(rest, fields, null_bitfield, [{hour, min, sec, msec} | acc], :tuples, json_library)
   end
 
   defp decode_date(<< 0::8-little, rest::bits >>,
-                   fields, null_bitfield, acc, :structs) do
+                   fields, null_bitfield, acc, :structs, json_library) do
     date = %Date{year: 0, month: 1, day: 1}
-    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs, json_library)
   end
 
   defp decode_date(<< 4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                   fields, null_bitfield, acc, :structs) do
+                   fields, null_bitfield, acc, :structs, json_library) do
     date = %Date{year: year, month: month, day: day}
-    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [date | acc], :structs, json_library)
   end
 
   defp decode_date(<< 0::8-little, rest::bits >>,
-                   fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0} | acc], :tuples)
+                   fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{0, 0, 0} | acc], :tuples, json_library)
   end
 
   defp decode_date(<< 4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                   fields, null_bitfield, acc, :tuples) do
+                   fields, null_bitfield, acc, :tuples, json_library) do
 
-    decode_bin_rows(rest, fields, null_bitfield, [{year, month, day} | acc], :tuples)
+    decode_bin_rows(rest, fields, null_bitfield, [{year, month, day} | acc], :tuples, json_library)
   end
 
 
   defp decode_datetime(<< 0::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :structs) do
+                       fields, null_bitfield, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0}
-    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
   end
 
   defp decode_datetime(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :structs) do
+                       fields, null_bitfield, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: year, month: month, day: day, hour: 0, minute: 0, second: 0}
-    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
   end
 
   defp decode_datetime(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :structs) do
+                       fields, null_bitfield, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec}
-    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
   end
 
   defp decode_datetime(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                       fields, null_bitfield, acc, :structs) do
+                       fields, null_bitfield, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec, microsecond: {msec, 6}}
-    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs)
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
   end
 
   defp decode_datetime(<< 0::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{0, 0, 0}, {0, 0, 0, 0}} | acc], :tuples)
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{0, 0, 0}, {0, 0, 0, 0}} | acc], :tuples, json_library)
   end
 
   defp decode_datetime(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {0, 0, 0, 0}} | acc], :tuples)
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {0, 0, 0, 0}} | acc], :tuples, json_library)
   end
 
   defp decode_datetime(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
-                       fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, 0}} | acc], :tuples)
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, 0}} | acc], :tuples, json_library)
   end
 
   defp decode_datetime(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
-                       fields, null_bitfield, acc, :tuples) do
-    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc], :tuples)
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc], :tuples, json_library)
+  end
+
+  defp decode_json(<< len::8, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) when len <= 250 do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 252::8, len::16-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 253::8, len::24-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
+  end
+
+  defp decode_json(<< 254::8, len::64-little, string::size(len)-binary, rest::bits >>, fields, nullint, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_bin_rows(rest, fields, nullint,  [json | acc], datetime, json_library)
   end
 
   ### TEXT ROW PARSER
@@ -335,93 +363,102 @@ defmodule Mariaex.RowParser do
     end
   end
 
-  def decode_text_rows(binary, fields, datetime) do
-    decode_text_part(binary, fields, [],  datetime)
+  def decode_text_rows(binary, fields, datetime, json_library) do
+    decode_text_part(binary, fields, [],  datetime, json_library)
   end
 
   ### IMPLEMENTATION
 
-  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc, datetime) when len <= 250 do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<len::8, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) when len <= 250 do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<252::8, len::16-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<253::8, len::24-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime) do
-    decode_text_rows(string, rest, fields, acc, datetime)
+  defp decode_text_part(<<254::8, len::64-little, string::size(len)-binary, rest::bits>>, fields, acc, datetime, json_library) do
+    decode_text_rows(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_part(<<>>, [], acc, _datetime) do
+  defp decode_text_part(<<>>, [], acc, _datetime, _json_library) do
     Enum.reverse(acc)
   end
 
-  defp decode_text_rows(string, rest, [:string | fields], acc, datetime) do
-    decode_text_part(rest, fields, [string | acc], datetime)
+  defp decode_text_rows(string, rest, [:string | fields], acc, datetime, json_library) do
+    decode_text_part(rest, fields, [string | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime, json_library)
    when type in [:uint8, :int8, :uint16, :int16, :uint32, :int32, :uint64, :int64] do
-    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc], datetime)
+    decode_text_part(rest, fields, [:erlang.binary_to_integer(string) | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [type | fields], acc, datetime)
+  defp decode_text_rows(string, rest, [type | fields], acc, datetime, json_library)
    when type in [:float32, :float64, :decimal] do
-    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc], datetime)
+    decode_text_part(rest, fields, [:erlang.binary_to_float(string) | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:bit | fields], acc, datetime) do
-    decode_text_part(rest, fields, [string | acc], datetime)
+  defp decode_text_rows(string, rest, [:bit | fields], acc, datetime, json_library) do
+    decode_text_part(rest, fields, [string | acc], datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:time | fields], acc, datetime) do
-    decode_text_time(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:time | fields], acc, datetime, json_library) do
+    decode_text_time(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:date | fields], acc, datetime) do
-    decode_text_date(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:date | fields], acc, datetime, json_library) do
+    decode_text_date(string, rest, fields, acc, datetime, json_library)
   end
 
-  defp decode_text_rows(string, rest, [:datetime | fields], acc, datetime) do
-    decode_text_datetime(string, rest, fields, acc, datetime)
+  defp decode_text_rows(string, rest, [:datetime | fields], acc, datetime, json_library) do
+    decode_text_datetime(string, rest, fields, acc, datetime, json_library)
+  end
+
+  defp decode_text_rows(string, rest, [:json | fields], acc, datetime, json_library) do
+    decode_text_json(string, rest, fields, acc, datetime, json_library)
   end
 
   defmacrop to_int(value) do
     quote do: :erlang.binary_to_integer(unquote(value))
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :structs) do
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :structs, json_library) do
     date = %Date{year: to_int(year), month: to_int(month), day: to_int(day)}
-    decode_text_part(rest, fields, [date | acc], :structs)
+    decode_text_part(rest, fields, [date | acc], :structs, json_library)
   end
 
-  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc], :tuples)
+  defp decode_text_date(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{to_int(year), to_int(month), to_int(day)} | acc], :tuples, json_library)
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs, json_library) do
     time = %Time{hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
-    decode_text_part(rest, fields, [time | acc], :structs)
+    decode_text_part(rest, fields, [time | acc], :structs, json_library)
   end
 
-  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples)
+  defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples, json_library)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs) do
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs, json_library) do
     datetime = %NaiveDateTime{year: to_int(year), month: to_int(month), day: to_int(day),
                               hour: to_int(hour), minute: to_int(min), second: to_int(sec)}
-    decode_text_part(rest, fields, [datetime | acc], :structs)
+    decode_text_part(rest, fields, [datetime | acc], :structs, json_library)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
-    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples) do
-    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples)
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples, json_library)
+  end
+
+  defp decode_text_json(string, rest, fields, acc, datetime, json_library) do
+    json = json_library.decode!(string)
+    decode_text_part(rest, fields, [json | acc], datetime, json_library)
   end
 end

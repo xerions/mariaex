@@ -22,7 +22,8 @@ defmodule Mariaex.Mixfile do
     [{:decimal, "~> 1.0"},
      {:db_connection, "~> 1.1"},
      {:coverex, "~> 1.4.10", only: :test},
-     {:ex_doc, ">= 0.0.0", only: :dev}]
+     {:ex_doc, ">= 0.0.0", only: :dev},
+     {:poison, ">= 0.0.0", optional: true}]
   end
 
   defp description do

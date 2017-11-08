@@ -36,3 +36,13 @@ After you are done, run `mix deps.get` in your shell to fetch and compile Mariae
 
 Important configuration, which depends on used charset for support unicode chars, see `:binary_as`
 in `Mariaex.start_link/1`
+
+### JSON library
+
+As default, [Poison](https://github.com/devinus/poison) is used for JSON library in mariaex to support JSON column.
+
+If you want to use another library, please set `config.exs` like below.
+
+```elixir
+config :mariaex, json_library: SomeLibrary
+```
