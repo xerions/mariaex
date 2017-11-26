@@ -239,10 +239,12 @@ defmodule Mariaex do
     {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
   def execute(conn, %Query{} = query, params, opts \\ []) do
     case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:error, %ArgumentError{} = err} ->
+      {:ok, _} = ok ->
+        ok
+      {:error, %Mariaex.Error{}} = error ->
+        error
+      {:error, err} ->
         raise err
-      other ->
-        other
     end
   end
 
@@ -288,10 +290,10 @@ defmodule Mariaex do
     case DBConnection.close(conn, query, defaults(opts)) do
       {:ok, _} ->
         :ok
-      {:error, %ArgumentError{} = err} ->
+      {:error, %Mariaex.Error{}} = error ->
+        error
+      {:error, err} ->
         raise err
-      other ->
-        other
     end
   end
 
@@ -420,19 +422,21 @@ defmodule Mariaex do
     case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
       {:ok, _, result} ->
         {:ok, result}
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      {:error, _} = error ->
+      {:error, %Mariaex.Error{}} = error ->
         error
+      {:error, err} ->
+        raise err
     end
   end
 
   defp prepare_binary(conn, query, opts) do
     case DBConnection.prepare(conn, query, defaults(opts)) do
-      {:error, %ArgumentError{} = err} ->
+      {:ok, _} = ok ->
+        ok
+      {:error, %Mariaex.Error{}} = error ->
+        error
+      {:error, err} ->
         raise err
-      other ->
-        other
     end
   end
 
