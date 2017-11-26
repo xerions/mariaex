@@ -15,6 +15,7 @@ defmodule Mariaex.Protocol do
   @timeout 5000
   @cache_size 100
   @max_rows 500
+  @nonposix_errors [:closed, :timeout]
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
@@ -1054,8 +1055,18 @@ defmodule Mariaex.Protocol do
   Do disconnect
   """
   def do_disconnect(s, {tag, action, reason, buffer}) do
-    err = Mariaex.Error.exception(tag: tag, action: action, reason: reason)
-    do_disconnect(s, err, buffer)
+    msg = "#{tag} #{action}: #{format_error(tag, reason)}"
+    {:disconnect, DBConnection.ConnectionError.exception(msg), %{s | buffer: buffer}}
+  end
+
+  defp format_error(_, reason) when reason in @nonposix_errors do
+    Atom.to_string(reason)
+  end
+  defp format_error(:tcp, reason) do
+    "#{:inet.format_error(reason)} - #{inspect(reason)}"
+  end
+  defp format_error(:ssl, reason) do
+    "#{:ssl.format_error(reason)} - #{inspect(reason)}"
   end
 
   defp do_disconnect(%{connection_id: connection_id} = state, %Mariaex.Error{} = err, buffer) do
