@@ -1,4 +1,6 @@
-ExUnit.configure exclude: [:ssl_tests]
+socket? = match?({:unix, _}, :os.type()) and List.to_integer(:erlang.system_info(:otp_release)) >= 19
+ExUnit.configure exclude: [ssl_tests: :true, json: System.get_env("JSON_SUPPORT") != "true",
+                           socket: not socket?]
 ExUnit.start()
 
 run_cmd = fn cmd ->

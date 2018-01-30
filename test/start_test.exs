@@ -32,4 +32,21 @@ defmodule StartTest do
     assert {:error, {%Mariaex.Error{message: "failed to upgraded socket: {:options, {:cacertfile, []}}"}, _}}  =
       Mariaex.Connection.start_link(Keyword.put(test_opts, :ssl_opts, Keyword.drop(test_opts[:ssl_opts], [:cacertfile])))
   end
+
+  @tag :socket
+  test "unix domain socket connection" do
+    parent = self()
+    test_opts = [
+      username: "mariaex_user",
+      password: "mariaex_pass",
+      database: "mariaex_test",
+      sync_connect: true,
+      socket: System.get_env("MDBSOCKET") || "/tmp/mysql.sock",
+      backoff_type: :stop,
+      after_connect: fn _ -> send(parent, :hi) end
+    ]
+
+    assert {:ok, _} = Mariaex.start_link(test_opts)
+    assert_receive :hi
+  end
 end

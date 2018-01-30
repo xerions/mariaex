@@ -11,13 +11,23 @@ notifications:
     - jquadrin@gmail.com
 sudo: false
 env:
+    global:
+        - MDBSOCKET=/var/run/mysqld/mysqld.sock
     matrix:
-        - DB=mariadb:10.1
-        - DB=mariadb:10.2
-        - DB=mariadb:10.3
-        - DB=mysql:8.0
-        - DB=mysql:5.7
-        - DB=mysql:5.6
+        - DB=mariadb:10.1 JSON_SUPPORT=false
+        - DB=mariadb:10.2 JSON_SUPPORT=false
+        - DB=mariadb:10.3 JSON_SUPPORT=false
+        - DB=mysql:8.0 JSON_SUPPORT=true
+        - DB=mysql:5.7 JSON_SUPPORT=true
+        - DB=mysql:5.6 JSON_SUPPORT=false
+matrix:
+  include:
+    - elixir: 1.4.5
+      otp_release: 19.3
+      env: DB=mysql:8.0 JSON_SUPPORT=true
+    - elixir: 1.5.1
+      otp_release: 19.3
+      env: DB=mysql:5.7 JSON_SUPPORT=true
 before_install:
     - sudo service mysql stop
     - docker pull $DB || true

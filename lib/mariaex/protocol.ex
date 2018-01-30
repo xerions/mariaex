@@ -71,8 +71,14 @@ defmodule Mariaex.Protocol do
     opts         = default_opts(opts)
     sock_type    = opts[:sock_type] |> Atom.to_string |> String.capitalize()
     sock_mod     = Module.concat(Mariaex.Connection, sock_type)
-    host         = opts[:hostname] |> parse_host
-    connect_opts = [host, opts[:port], opts[:socket_options], opts[:timeout]]
+    {host, port} =
+      case Keyword.fetch(opts, :socket) do
+        {:ok, socket} ->
+          {{:local, socket}, 0}
+        :error ->
+          {parse_host(opts[:hostname]), opts[:port]}
+      end
+    connect_opts = [host, port, opts[:socket_options], opts[:timeout]]
     binary_as    = opts[:binary_as] || :field_type_var_string
 
     case apply(sock_mod, :connect, connect_opts) do
