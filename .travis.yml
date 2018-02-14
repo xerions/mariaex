@@ -17,7 +17,7 @@ env:
     matrix:
         - DB=mariadb:10.1 JSON_SUPPORT=false
         - DB=mariadb:10.2 JSON_SUPPORT=false
-        - DB=mariadb:10.3 JSON_SUPPORT=false
+        - DB=mariadb:10.3 JSON_SUPPORT=false GEOMETRY_SUPPORT=false
         - DB=mysql:8.0 JSON_SUPPORT=true
         - DB=mysql:5.7 JSON_SUPPORT=true
         - DB=mysql:5.6 JSON_SUPPORT=false

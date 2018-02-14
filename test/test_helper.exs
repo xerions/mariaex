@@ -5,7 +5,12 @@ socket? =
     is_binary(mdb_socket) and File.exists?(mdb_socket)
 
 ExUnit.configure(
-  exclude: [ssl_tests: true, json: System.get_env("JSON_SUPPORT") != "true", socket: not socket?]
+  exclude: [
+    ssl_tests: true,
+    json: System.get_env("JSON_SUPPORT") != "true",
+    socket: not socket?,
+    geometry: System.get_env("GEOMETRY_SUPPORT") == "false"
+  ]
 )
 
 ExUnit.start()
