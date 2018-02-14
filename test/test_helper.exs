@@ -1,5 +1,8 @@
+mdb_socket = System.get_env("MDBSOCKET")
+
 socket? =
-  match?({:unix, _}, :os.type()) and List.to_integer(:erlang.system_info(:otp_release)) >= 19
+  match?({:unix, _}, :os.type()) and List.to_integer(:erlang.system_info(:otp_release)) >= 19 and
+    is_binary(mdb_socket) and File.exists?(mdb_socket)
 
 ExUnit.configure(
   exclude: [ssl_tests: true, json: System.get_env("JSON_SUPPORT") != "true", socket: not socket?]
