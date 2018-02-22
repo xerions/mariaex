@@ -21,7 +21,7 @@ defmodule Mariaex.Messages do
                   constraint: ?n, file: ?F, line: ?L, routine: ?R ]
   _ = @error_fields # Drop warning for now
 
-  @commands [ com_sleep: 0x00, com_quit: 0x01, com_init_bd: 0x02,
+  @commands [ com_sleep: 0x00, com_quit: 0x01, com_init_db: 0x02,
               com_query: 0x03, com_field_list: 0x04, com_create_db: 0x05,
               com_drop_db: 0x06, com_refresh: 0x07, com_shutdown: 0x08,
               com_statistics: 0x09, com_process_info: 0x0a, com_connect: 0x0b,
