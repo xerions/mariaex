@@ -46,7 +46,6 @@ If you want to use another library, please set `config.exs` like below.
 ```elixir
 config :mariaex, json_library: SomeLibrary
 ```
-=======
 ## Data representation
 
     MySQL                 Elixir
