@@ -180,7 +180,7 @@ defmodule Mariaex do
 
   ## Examples
 
-      Mariaex.prepare(conn, "CREATE TABLE posts (id serial, title text)")
+      Mariaex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
   @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Mariaex.Error.t}
   def prepare(conn, name, statement, opts \\ []) do
