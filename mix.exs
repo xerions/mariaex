@@ -7,7 +7,7 @@ defmodule Mariaex.Mixfile do
      elixir: "~> 1.3",
      deps: deps(),
      name: "Mariaex",
-     source_url: "https://github.com/liveforeverx/mariaex",
+     source_url: "https://github.com/xerions/mariaex",
      test_coverage: [tool: Coverex.Task, coveralls: true],
      description: description(),
      package: package(),
