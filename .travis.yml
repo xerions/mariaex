@@ -2,9 +2,10 @@ language: elixir
 elixir:
   - 1.4.5
   - 1.5.3
-  - 1.6.1
+  - 1.6.6
 otp_release:
-  - 20.2
+  - 20.3
+  - 21.0
 services: docker
 notifications:
   recipients:
@@ -29,6 +30,11 @@ matrix:
     - elixir: 1.5.1
       otp_release: 19.3
       env: DB=mysql:5.7 JSON_SUPPORT=true
+  exclude:
+    - elixir: 1.4.5
+      otp_release: 21.0
+    - elixir: 1.5.3
+      otp_release: 21.0
 before_install:
     - sudo service mysql stop
     - docker pull $DB || true
