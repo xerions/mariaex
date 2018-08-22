@@ -1143,6 +1143,10 @@ defmodule Mariaex.Protocol do
     {:ok, state}
   end
 
+  defp ping_handle(error = packet(msg: error_resp()), :ping, %{buffer: buffer} = state) when is_binary(buffer) do
+    {:disconnect, error,  state}
+  end
+
   defp send_text_query(s, statement) do
     msg_send(text_cmd(command: com_query(), statement: statement), s, 0)
     %{s | state: :column_count}
