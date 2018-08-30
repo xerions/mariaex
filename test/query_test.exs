@@ -40,7 +40,8 @@ defmodule QueryTest do
 
     Process.flag(:trap_exit, true)
     capture_log fn ->
-      assert %Mariaex.Error{} = query("DO SLEEP(0.1)", [], timeout: 0)
+      assert_raise DBConnection.ConnectionError, "tcp recv: closed",
+        fn -> query("DO SLEEP(10)", [], timeout: 50) end
       assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
     end
   end
