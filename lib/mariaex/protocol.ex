@@ -187,7 +187,7 @@ defmodule Mariaex.Protocol do
   defp handle_handshake(packet(seqnum: seqnum) = packet, opts, %{ssl_conn_state: :ssl_handshake} = s) do
     # Create and send an SSL request packet per the spec:
     # https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::SSLRequest
-    msg = ssl_connection_request(capability_flags: ssl_capabilities(opts), max_size: @maxpacketbytes, character_set: 8)
+    msg = ssl_connection_request(capability_flags: ssl_capabilities(opts), max_size: @maxpacketbytes, character_set: 33)
     msg_send(msg, s, new_seqnum = seqnum + 1)
     case upgrade_to_ssl(s, opts) do
       {:ok, new_state} ->
@@ -212,7 +212,7 @@ defmodule Mariaex.Protocol do
     {database, capabilities} = capabilities(opts)
     msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
                          database: database, capability_flags: capabilities,
-                         max_size: @maxpacketbytes, character_set: 8)
+                         max_size: @maxpacketbytes, character_set: 33)
     msg_send(msg, s, seqnum + 1)
     handshake_recv(%{s | state: :handshake_send, deprecated_eof: deprecated_eof}, nil)
   end
