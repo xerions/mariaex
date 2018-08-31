@@ -3,7 +3,6 @@ defmodule Mariaex.Messages do
 
   import Record, only: [defrecord: 2]
   use Mariaex.Coder
-  require Decimal
 
   # @protocol_vsn_major 3
   # @protocol_vsn_minor 0
