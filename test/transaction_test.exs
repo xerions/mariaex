@@ -30,7 +30,6 @@ defmodule TransactionTest do
     {conn, _} = DBConnection.begin!(pid, opts)
     assert {:error, %DBConnection.TransactionError{status: :transaction}} =
       DBConnection.begin(conn, opts)
-    DBConnection.commit!(conn, opts)
   end
 
   test "can not commit or rollback transaction if not begun", context do
