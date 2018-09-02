@@ -14,7 +14,7 @@ defmodule StartTest do
     assert capture_log(fn ->
       {:ok, pid} = Mariaex.start_link([username: "non_existing", database: "mariaex_test"] ++ opts)
       assert_receive {:EXIT, ^pid, :killed}, 5000
-    end) =~ "** (Mariaex.Error) (1045): Access denied for user 'non_existing'@'localhost'"
+    end) =~ "** (Mariaex.Error) (1045): Access denied for user 'non_existing'"
 
     assert capture_log(fn ->
       {:ok, pid} = Mariaex.start_link([username: "mariaex_user", password: "mariaex_pass", database: "mariaex_test", port: 60999] ++ opts)
