@@ -210,8 +210,10 @@ defmodule Mariaex do
 
   @doc """
   Runs an (extended) prepared query and returns the result as
-  `{:ok, %Mariaex.Result{}}` or `{:error, %Mariaex.Error{}}` if there was an
-  error. Parameters are given as part of the prepared query, `%Mariaex.Query{}`.
+  `{:ok, %Mariaex.Query{}, %Mariaex.Result{}}` or `{:error, %Mariaex.Error{}}`
+  if there was an error. Parameters are given as part of the prepared query,
+  `%Mariaex.Query{}`.
+
   See the README for information on how Mariaex encodes and decodes Elixir
   values by default. See `Mariaex.Query` for the query data and
   `Mariaex.Result` for the result data.
