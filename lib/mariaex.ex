@@ -280,8 +280,8 @@ defmodule Mariaex do
     case DBConnection.close(conn, query, defaults(opts)) do
       {:ok, _} ->
         :ok
-      {:error, err} ->
-        err
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -419,8 +419,8 @@ defmodule Mariaex do
     case DBConnection.prepare(conn, query, defaults(opts)) do
       {:ok, _} = ok ->
         ok
-      {:error, err} ->
-        err
+      {:error, _} = error ->
+        error
     end
   end
 
