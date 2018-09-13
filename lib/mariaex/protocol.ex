@@ -224,7 +224,7 @@ defmodule Mariaex.Protocol do
     case send_text_query(state, statement) |> text_query_recv(query) do
       {:error, error, _} ->
         {:error, error}
-      {:ok, _, state} ->
+      {:ok, _, _, state} ->
         activate(state, state.buffer) |> connected()
     end
   end
@@ -505,9 +505,10 @@ defmodule Mariaex.Protocol do
     case text_query_recv(state) do
       {:resultset, columns, rows, flags, state} ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
-        {:ok, {result, columns}, clean_state(state, flags)}
+        {:ok, query, {result, columns}, clean_state(state, flags)}
       {:ok, packet(msg: ok_resp()) = packet, state} ->
-        handle_ok_packet(packet, query, state)
+        {:ok, result, state} = handle_ok_packet(packet, query, state)
+        {:ok, query, result, state}
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
@@ -566,7 +567,8 @@ defmodule Mariaex.Protocol do
       {:resultset, columns, bin_rows, flags, state} ->
         binary_query_resultset(state, query, columns, bin_rows, flags)
       {:ok, packet(msg: ok_resp()) = packet, state} ->
-        handle_ok_packet(packet, query, state)
+        {:ok, result, state} = handle_ok_packet(packet, query, state)
+        {:ok, query, result, state}
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
@@ -626,7 +628,7 @@ defmodule Mariaex.Protocol do
         binary_query_more(state, query, columns, rows)
       true ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
-        {:ok, {result, columns}, clean_state(state, flags)}
+        {:ok, query, {result, columns}, clean_state(state, flags)}
     end
   end
 
@@ -635,7 +637,7 @@ defmodule Mariaex.Protocol do
       {:ok, packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id, status_flags: flags)), state} ->
         result = %Mariaex.Result{rows: rows, num_rows: affected_rows,
           last_insert_id: last_insert_id, connection_id: state.connection_id}
-        {:ok, {result, columns}, clean_state(state, flags)}
+        {:ok, query, {result, columns}, clean_state(state, flags)}
       {:ok, packet, state} ->
         handle_error(packet, query, state)
       {:error, reason} ->
@@ -737,14 +739,14 @@ defmodule Mariaex.Protocol do
     case declare_lookup(query, state) do
       {:declare, id} ->
         cursor = %Cursor{statement_id: id, ref: make_ref()}
-        declare(cursor, params, state)
+        declare(cursor, query, params, state)
       {:prepare_declare, query} ->
         prepare_declare(&prepare(query, &1), params, state)
       {:close_prepare_declare, id, query} ->
         prepare_declare(&close_prepare(id, query, &1), params, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, ref: make_ref()}
-        declare(cursor, params, state)
+        declare(cursor, query, params, state)
     end
   end
 
@@ -770,10 +772,10 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp declare(%Cursor{ref: ref, statement_id: id} = cursor, params, state) do
+  defp declare(%Cursor{ref: ref, statement_id: id} = cursor, query, params, state) do
     state = put_in(state.cursors[ref], {:first, id, params})
     # close cursor if idle
-    {:ok, cursor, clean_state(state, nil)}
+    {:ok, query, cursor, clean_state(state, nil)}
   end
 
   defp prepare_declare(prepare, params, state) do
@@ -781,7 +783,7 @@ defmodule Mariaex.Protocol do
       {:ok, query, state} ->
         id = prepare_declare_lookup(query, state)
         cursor = %Cursor{statement_id: id, ref: make_ref()}
-        declare(cursor, params, state)
+        declare(cursor, query, params, state)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -827,7 +829,7 @@ defmodule Mariaex.Protocol do
 
   defp first(query, %Cursor{statement_id: :text}, params, opts, state) do
     case handle_execute(query, params, opts, state) do
-      {:ok, result, state} ->
+      {:ok, _, result, state} ->
         {:halt, result, state}
       other ->
         other
@@ -878,7 +880,7 @@ defmodule Mariaex.Protocol do
 
   defp binary_first_more(state, query, columns, rows) do
     case binary_query_more(state, query, columns, rows) do
-      {:ok, res, state} ->
+      {:ok, _query, res, state} ->
         {:halt, res, state}
       other ->
         other

@@ -138,12 +138,11 @@ defmodule Mariaex do
   def query(conn, statement, params, opts) do
     case Keyword.get(opts, :query_type) do
       :text ->
-        query = %Query{type: :text, statement: statement, ref: make_ref(),
-                       num_params: 0}
-        execute(conn, query, [], opts)
+        query = %Query{type: :text, statement: statement, ref: make_ref(), num_params: 0}
+        run_query(:execute, conn, query, [], opts)
       type when type in [:binary, nil] ->
         query = %Query{type: type, statement: statement}
-        prepare_execute(conn, query, params, defaults(opts))
+        run_query(:prepare_execute, conn, query, params, defaults(opts))
     end
   end
 
@@ -237,16 +236,9 @@ defmodule Mariaex do
       Mariaex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Mariaex.Query.t, list, Keyword.t) ::
-    {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+    {:ok, Mariaex.Query.t, Mariaex.Result.t} | {:error, Mariaex.Error.t}
   def execute(conn, %Query{} = query, params, opts \\ []) do
-    case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:ok, _} = ok ->
-        ok
-      {:error, %Mariaex.Error{}} = error ->
-        error
-      {:error, err} ->
-        raise err
-    end
+    DBConnection.execute(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -255,12 +247,7 @@ defmodule Mariaex do
   """
   @spec execute!(conn, Mariaex.Query.t, list, Keyword.t) :: Mariaex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    case execute(conn, query, params, opts) do
-      {:ok, res} ->
-        res
-      {:error, err} ->
-        raise err
-    end
+    DBConnection.execute!(conn, query, params, defaults(opts))
   end
 
   @doc """
@@ -291,10 +278,8 @@ defmodule Mariaex do
     case DBConnection.close(conn, query, defaults(opts)) do
       {:ok, _} ->
         :ok
-      {:error, %Mariaex.Error{}} = error ->
-        error
       {:error, err} ->
-        raise err
+        err
     end
   end
 
@@ -419,14 +404,12 @@ defmodule Mariaex do
 
   ## Helpers
 
-  defp prepare_execute(conn, query, params, opts) do
-    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+  defp run_query(op, conn, query, params, opts) do
+    case apply(DBConnection, op, [conn, query, params, defaults(opts)]) do
       {:ok, _, result} ->
         {:ok, result}
-      {:error, %Mariaex.Error{}} = error ->
+      {:error, _} = error ->
         error
-      {:error, err} ->
-        raise err
     end
   end
 
@@ -434,10 +417,8 @@ defmodule Mariaex do
     case DBConnection.prepare(conn, query, defaults(opts)) do
       {:ok, _} = ok ->
         ok
-      {:error, %Mariaex.Error{}} = error ->
-        error
       {:error, err} ->
-        raise err
+        err
     end
   end
 

@@ -41,10 +41,8 @@ defmodule QueryTest do
     conn = context[:pid]
 
     assert capture_log(fn ->
-      assert_raise DBConnection.ConnectionError, "tcp recv: closed", fn ->
-        query("DO SLEEP(10)", [], timeout: 50)
-      end
-
+      %DBConnection.ConnectionError{message: message} = query("DO SLEEP(10)", [], timeout: 50)
+      assert message =~ "tcp recv: closed"
       assert_receive {:EXIT, ^conn, :killed}, 5000
     end) =~ "** (DBConnection.ConnectionError)"
   end
