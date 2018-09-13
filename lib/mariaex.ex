@@ -132,7 +132,7 @@ defmodule Mariaex do
                                 param_types: ["text", "text"], result_types: ["text"])
 
   """
-  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params \\ [], opts \\ [])
 
   def query(conn, statement, params, opts) do
@@ -181,7 +181,7 @@ defmodule Mariaex do
 
       Mariaex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Mariaex.Error.t}
+  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     case Keyword.get(opts, :query_type) do
       :text ->
@@ -238,7 +238,7 @@ defmodule Mariaex do
       Mariaex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Mariaex.Query.t, list, Keyword.t) ::
-    {:ok, Mariaex.Query.t, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+    {:ok, Mariaex.Query.t, Mariaex.Result.t} | {:error, Exception.t}
   def execute(conn, %Query{} = query, params, opts \\ []) do
     DBConnection.execute(conn, query, params, defaults(opts))
   end
@@ -270,7 +270,7 @@ defmodule Mariaex do
       query = Mariaex.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
       Mariaex.close(conn, query)
   """
-  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Exception.t}
   def close(conn, query, opts \\ [])
 
   def close(_, %Query{type: :text}, _) do
