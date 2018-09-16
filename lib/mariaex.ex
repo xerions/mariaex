@@ -61,8 +61,7 @@ defmodule Mariaex do
     * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
       idle or `:passive` not to (default: `:passive`);
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-      options, this option must be included with all requests contacting the pool
-     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+      options (default: `DBConnection.ConnectionPool`);
     * `:name` - A name to register the started process (see the `:name` option
     in `GenServer.start_link/3`).
     * `:datetime` - How datetimes should be returned. `:structs` for Elixir v1.3
@@ -172,8 +171,6 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
       protocol or `nil` to try binary but fallback to text (default `nil`)
 
@@ -226,8 +223,6 @@ defmodule Mariaex do
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -262,8 +257,6 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
 
   ## Examples
 
@@ -322,16 +315,13 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
 
-
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` and `:mode` will be used for all
-  requests inside the transaction function.
+  transactions and requests. The `:mode` will be used for all requests inside
+  the transaction function.
 
   ## Example
 
