@@ -149,6 +149,15 @@ defmodule Mariaex.TestHelper do
     end
   end
 
+  defmacro prepare_execute(name, statement, params, opts \\ []) do
+    quote do
+      case Mariaex.prepare_execute(var!(context)[:pid], unquote(name), unquote(statement), unquote(params), unquote(opts)) do
+        {:ok, %Mariaex.Query{} = query, %Mariaex.Result{rows: rows}} -> {query, rows}
+        {:error, err} -> err
+      end
+    end
+  end
+
   defmacro close(query, opts \\ []) do
     quote do
       case Mariaex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
