@@ -108,6 +108,17 @@ defmodule Mariaex.Messages do
     username :string
     password :length_string
     database :string
+    plugin   :string_eof
+  end
+
+  defcoder :handshake_no_database_resp do
+    capability_flags 4
+    max_size 4
+    character_set 1
+    _ 23
+    username :string
+    password :length_string
+    plugin   :string_eof
   end
 
   defcoder :ssl_connection_request do
@@ -213,6 +224,19 @@ defmodule Mariaex.Messages do
     _ 2
   end
 
+  defcoder :auth_switch do
+    plugin :string
+    salt :string
+  end
+
+  defcoder :auth_switch_request do
+    password :string_eof
+  end
+
+  defcoder :caching_sha2_send_password do
+    password :string
+  end
+
   # Encoding
 
   def encode(msg, seqnum) do
@@ -262,6 +286,8 @@ defmodule Mariaex.Messages do
     {:more, rows, rest}
   end
 
+  defp decode_msg(<< 1 :: 8, 3 :: 8>>, _),                                         do: :fast_auth_success
+  defp decode_msg(<< 1 :: 8, 4 :: 8>>, _),                                         do: :perform_full_authentication
   defp decode_msg(<< 255 :: 8, _ :: binary >> = body, _),                          do: __decode__(:error_resp, body)
   defp decode_msg(body, :handshake),                                               do: __decode__(:handshake, body)
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, :bin_rows),                    do: __decode__(:bin_row, body)
@@ -269,6 +295,7 @@ defmodule Mariaex.Messages do
   defp decode_msg(<< 0 :: 8, _ :: binary >> = body, _),                            do: __decode__(:ok_resp, body)
   defp decode_msg(<< 254 >> = _body, _),                                           do: :mysql_old_password
   defp decode_msg(<< 254 :: 8, _ :: binary >> = body, _) when byte_size(body) < 9, do: __decode__(:eof_resp, body)
+  defp decode_msg(<< 254 :: 8, rest :: binary >>, _),                              do: __decode__(:auth_switch, rest)
   defp decode_msg(<< _ :: binary >> = body, :text_rows),                           do: __decode__(:text_row, body)
   defp decode_msg(body, :column_count),                                            do: __decode__(:column_count, body)
   defp decode_msg(body, :column_definitions),                                      do: __decode__(:column_definition_41, body)
