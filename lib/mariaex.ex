@@ -211,7 +211,7 @@ defmodule Mariaex do
 
   @doc """
   Prepares and executes a query and returns the result as
-  `{:ok, %Mariaex.Query{}, %Mariaex.Result{}}` or `{:error, %Mariaex.Error{}}`
+  `{:ok, %Mariaex.Query{}, %Mariaex.Result{}}` or `{:error, exception}`
   if there was an error. Parameters are given as part of the prepared query,
   `%Mariaex.Query{}`.
 
