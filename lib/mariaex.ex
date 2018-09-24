@@ -16,10 +16,14 @@ defmodule Mariaex do
   """
   @type conn :: DBConnection.conn
 
-  @pool_timeout 5000
-  @timeout 5000
   @idle_timeout 5000
   @max_rows 500
+
+  # Inherited from DBConnection
+
+  @pool_timeout 5000
+  @timeout 15000
+
   ### PUBLIC API ###
 
   @doc """
@@ -61,8 +65,7 @@ defmodule Mariaex do
     * `:idle` - Either `:active` to asynchronously detect TCP disconnects when
       idle or `:passive` not to (default: `:passive`);
     * `:pool` - The pool module to use, see `DBConnection` for pool dependent
-      options, this option must be included with all requests contacting the pool
-     if not `DBConnection.Connection` (default: `DBConnection.Connection`);
+      options (default: `DBConnection.ConnectionPool`);
     * `:name` - A name to register the started process (see the `:name` option
     in `GenServer.start_link/3`).
     * `:datetime` - How datetimes should be returned. `:structs` for Elixir v1.3
@@ -132,18 +135,17 @@ defmodule Mariaex do
                                 param_types: ["text", "text"], result_types: ["text"])
 
   """
-  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+  @spec query(conn, iodata, list, Keyword.t) :: {:ok, Mariaex.Result.t} | {:error, Exception.t}
   def query(conn, statement, params \\ [], opts \\ [])
 
   def query(conn, statement, params, opts) do
     case Keyword.get(opts, :query_type) do
       :text ->
-        query = %Query{type: :text, statement: statement, ref: make_ref(),
-                       num_params: 0}
-        execute(conn, query, [], opts)
+        query = %Query{type: :text, statement: statement, ref: make_ref(), num_params: 0}
+        run_query(:execute, conn, query, [], opts)
       type when type in [:binary, nil] ->
         query = %Query{type: type, statement: statement}
-        prepare_execute(conn, query, params, defaults(opts))
+        run_query(:prepare_execute, conn, query, params, opts)
     end
   end
 
@@ -173,8 +175,6 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
       protocol or `nil` to try binary but fallback to text (default `nil`)
 
@@ -182,7 +182,7 @@ defmodule Mariaex do
 
       Mariaex.prepare(conn, "", "CREATE TABLE posts (id serial, title text)")
   """
-  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Mariaex.Error.t}
+  @spec prepare(conn, iodata, iodata, Keyword.t) :: {:ok, Mariaex.Query.t} | {:error, Exception.t}
   def prepare(conn, name, statement, opts \\ []) do
     case Keyword.get(opts, :query_type) do
       :text ->
@@ -191,7 +191,7 @@ defmodule Mariaex do
         {:ok, query}
       type when type in [:binary, nil] ->
         query = %Query{type: type, name: name, statement: statement}
-        prepare_binary(conn, query, opts)
+        DBConnection.prepare(conn, query, opts)
     end
   end
 
@@ -210,9 +210,11 @@ defmodule Mariaex do
   end
 
   @doc """
-  Runs an (extended) prepared query and returns the result as
-  `{:ok, %Mariaex.Result{}}` or `{:error, %Mariaex.Error{}}` if there was an
-  error. Parameters are given as part of the prepared query, `%Mariaex.Query{}`.
+  Prepares and executes a query and returns the result as
+  `{:ok, %Mariaex.Query{}, %Mariaex.Result{}}` or `{:error, exception}`
+  if there was an error. Parameters are given as part of the prepared query,
+  `%Mariaex.Query{}`.
+
   See the README for information on how Mariaex encodes and decodes Elixir
   values by default. See `Mariaex.Query` for the query data and
   `Mariaex.Result` for the result data.
@@ -225,8 +227,58 @@ defmodule Mariaex do
     * `:timeout` - Execute request timeout (default: `#{@timeout}`);
     * `:decode_mapper` - Fun to map each row in the result to a term after
     decoding, (default: `fn x -> x end`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
+
+  ## Examples
+
+      Mariaex.prepare_execute(conn, "", "SELECT id FROM posts WHERE title like $1", ["%my%"])
+
+  """
+  @spec prepare_execute(conn, iodata, iodata, list, Keyword.t) ::
+    {:ok, Mariaex.Query.t, Mariaex.Result.t} | {:error, Exception.t}
+  def prepare_execute(conn, name, statement, params, opts \\ []) do
+    case Keyword.get(opts, :query_type) do
+      :text ->
+        query = %Query{type: :text, name: name, statement: statement, ref: make_ref(), num_params: 0}
+        DBConnection.execute(conn, query, params, opts)
+      type when type in [:binary, nil] ->
+        query = %Query{type: type, name: name, statement: statement}
+        DBConnection.prepare_execute(conn, query, params, opts)
+    end
+  end
+
+  @doc """
+  Prepares and executes a query and returns the result or raises
+  `Mariaex.Error` if there was an error. See `execute/4`.
+  """
+  @spec prepare_execute!(conn, Mariaex.Query.t, list, Keyword.t) ::
+          {Mariaex.Query.t, Mariaex.Result.t}
+  def prepare_execute!(conn, name, statement, params, opts \\ []) do
+    case prepare_execute(conn, name, statement, params, opts) do
+      {:ok, query, result} ->
+        {query, result}
+      {:error, err} ->
+        raise err
+    end
+  end
+
+  @doc """
+  Runs an (extended) prepared query and returns the result as
+  `{:ok, %Mariaex.Query{}, %Mariaex.Result{}}` or `{:error, %Mariaex.Error{}}`
+  if there was an error. Parameters are given as part of the prepared query,
+  `%Mariaex.Query{}`.
+
+  See the README for information on how Mariaex encodes and decodes Elixir
+  values by default. See `Mariaex.Query` for the query data and
+  `Mariaex.Result` for the result data.
+
+  ## Options
+
+    * `:pool_timeout` - Time to wait in the queue for the connection
+    (default: `#{@pool_timeout}`)
+    * `:queue` - Whether to wait for connection in a queue (default: `true`);
+    * `:timeout` - Execute request timeout (default: `#{@timeout}`);
+    * `:decode_mapper` - Fun to map each row in the result to a term after
+    decoding, (default: `fn x -> x end`);
 
   ## Examples
 
@@ -237,14 +289,9 @@ defmodule Mariaex do
       Mariaex.execute(conn, query, ["%my%"])
   """
   @spec execute(conn, Mariaex.Query.t, list, Keyword.t) ::
-    {:ok, Mariaex.Result.t} | {:error, Mariaex.Error.t}
+    {:ok, Mariaex.Query.t, Mariaex.Result.t} | {:error, Exception.t}
   def execute(conn, %Query{} = query, params, opts \\ []) do
-    case DBConnection.execute(conn, query, params, defaults(opts)) do
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      other ->
-        other
-    end
+    DBConnection.execute(conn, query, params, opts)
   end
 
   @doc """
@@ -253,12 +300,7 @@ defmodule Mariaex do
   """
   @spec execute!(conn, Mariaex.Query.t, list, Keyword.t) :: Mariaex.Result.t
   def execute!(conn, query, params, opts \\ []) do
-    case execute(conn, query, params, opts) do
-      {:ok, res} ->
-        res
-      {:error, err} ->
-        raise err
-    end
+    DBConnection.execute!(conn, query, params, opts)
   end
 
   @doc """
@@ -271,28 +313,24 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Prepare request timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection`
 
   ## Examples
 
       query = Mariaex.prepare!(conn, "SELECT id FROM posts WHERE title like $1")
       Mariaex.close(conn, query)
   """
-  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Mariaex.Error.t}
+  @spec close(conn, Mariaex.Query.t, Keyword.t) :: :ok | {:error, Exception.t}
   def close(conn, query, opts \\ [])
 
   def close(_, %Query{type: :text}, _) do
     :ok
   end
   def close(conn, query, opts) do
-    case DBConnection.close(conn, query, defaults(opts)) do
+    case DBConnection.close(conn, query, opts) do
       {:ok, _} ->
         :ok
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      other ->
-        other
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -333,16 +371,13 @@ defmodule Mariaex do
     (default: `#{@pool_timeout}`)
     * `:queue` - Whether to wait for connection in a queue (default: `true`);
     * `:timeout` - Transaction timeout (default: `#{@timeout}`);
-    * `:pool` - The pool module to use, must match that set on
-    `start_link/1`, see `DBConnection;
     * `:mode` - Set to `:savepoint` to use savepoints instead of an SQL
     transaction, otherwise set to `:transaction` (default: `:transaction`);
 
-
   The `:timeout` is for the duration of the transaction and all nested
   transactions and requests. This timeout overrides timeouts set by internal
-  transactions and requests. The `:pool` and `:mode` will be used for all
-  requests inside the transaction function.
+  transactions and requests. The `:mode` will be used for all requests inside
+  the transaction function.
 
   ## Example
 
@@ -353,7 +388,7 @@ defmodule Mariaex do
   @spec transaction(conn, ((DBConnection.t) -> result), Keyword.t) ::
     {:ok, result} | {:error, any} when result: var
   def transaction(conn, fun, opts \\ []) do
-    DBConnection.transaction(conn, fun, defaults(opts))
+    DBConnection.transaction(conn, fun, opts)
   end
 
   @doc """
@@ -393,7 +428,7 @@ defmodule Mariaex do
   def stream(conn, query, params, opts \\ [])
 
   def stream(conn, %Query{} = query, params, opts) do
-    DBConnection.stream(conn, query, params, defaults(opts))
+    DBConnection.stream(conn, query, params, opts)
   end
   def stream(conn, statement, params, opts) do
     case Keyword.get(opts, :query_type) do
@@ -403,7 +438,7 @@ defmodule Mariaex do
         stream(conn, query, [], opts)
       type when type in [:binary, nil] ->
         query = %Query{type: type, statement: statement}
-        prepare_stream(conn, query, params, opts)
+        DBConnection.prepare_stream(conn, query, params, opts)
     end
   end
 
@@ -417,31 +452,12 @@ defmodule Mariaex do
 
   ## Helpers
 
-  defp prepare_execute(conn, query, params, opts) do
-    case DBConnection.prepare_execute(conn, query, params, defaults(opts)) do
+  defp run_query(op, conn, query, params, opts) do
+    case apply(DBConnection, op, [conn, query, params, opts]) do
       {:ok, _, result} ->
         {:ok, result}
-      {:error, %ArgumentError{} = err} ->
-        raise err
       {:error, _} = error ->
         error
     end
-  end
-
-  defp prepare_binary(conn, query, opts) do
-    case DBConnection.prepare(conn, query, defaults(opts)) do
-      {:error, %ArgumentError{} = err} ->
-        raise err
-      other ->
-        other
-    end
-  end
-
-  defp prepare_stream(conn, query, params, opts) do
-    DBConnection.prepare_stream(conn, query, params, defaults(opts))
-  end
-
-  defp defaults(opts) do
-    Keyword.put_new(opts, :timeout, @timeout)
   end
 end

@@ -101,7 +101,7 @@ defmodule Mariaex.TestHelper do
       case Mariaex.Connection.query(pid, unquote(stat), unquote(params), unquote(opts)) do
         {:ok, %Mariaex.Result{rows: nil}} -> :ok
         {:ok, %Mariaex.Result{rows: rows}} -> rows
-        {:error, %Mariaex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -113,7 +113,7 @@ defmodule Mariaex.TestHelper do
       case Mariaex.query(var!(context)[:pid], unquote(stat), unquote(params), opts) do
         {:ok, %Mariaex.Result{rows: nil}} -> :ok
         {:ok, %Mariaex.Result{rows: rows}} -> rows
-        {:error, %Mariaex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -134,7 +134,7 @@ defmodule Mariaex.TestHelper do
     quote do
       case Mariaex.prepare(var!(context)[:pid], unquote(stat), unquote(opts)) do
         {:ok, %Mariaex.Query{} = query} -> query
-        {:error, %Mariaex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
   end
@@ -142,9 +142,18 @@ defmodule Mariaex.TestHelper do
   defmacro execute(query, params, opts \\ []) do
     quote do
       case Mariaex.execute(var!(context)[:pid], unquote(query), unquote(params), unquote(opts)) do
-        {:ok, %Mariaex.Result{rows: nil}} -> :ok
-        {:ok, %Mariaex.Result{rows: rows}} -> rows
-        {:error, %Mariaex.Error{} = err} -> err
+        {:ok, %Mariaex.Query{}, %Mariaex.Result{rows: nil}} -> :ok
+        {:ok, %Mariaex.Query{}, %Mariaex.Result{rows: rows}} -> rows
+        {:error, err} -> err
+      end
+    end
+  end
+
+  defmacro prepare_execute(name, statement, params, opts \\ []) do
+    quote do
+      case Mariaex.prepare_execute(var!(context)[:pid], unquote(name), unquote(statement), unquote(params), unquote(opts)) do
+        {:ok, %Mariaex.Query{} = query, %Mariaex.Result{rows: rows}} -> {query, rows}
+        {:error, err} -> err
       end
     end
   end
@@ -153,15 +162,9 @@ defmodule Mariaex.TestHelper do
     quote do
       case Mariaex.close(var!(context)[:pid], unquote(query), unquote(opts)) do
         :ok -> :ok
-        {:error, %Mariaex.Error{} = err} -> err
+        {:error, err} -> err
       end
     end
-  end
-
-  def capture_log(fun) do
-    Logger.remove_backend(:console)
-    fun.()
-    Logger.add_backend(:console, flush: true)
   end
 
   def length_encode_row(row) do

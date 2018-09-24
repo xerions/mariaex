@@ -1,8 +1,9 @@
 defmodule QueryTest do
   use ExUnit.Case, async: true
   import Mariaex.TestHelper
+  import ExUnit.CaptureLog
 
-  @opts [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", cache_size: 2, backoff_type: :stop]
+  @opts [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", cache_size: 2, backoff_type: :stop, max_restarts: 0]
 
   setup context do
     connection_opts = context[:connection_opts] || []
@@ -36,13 +37,14 @@ defmodule QueryTest do
   end
 
   test "queries are dequeued after previous query is processed", context do
+    Process.flag(:trap_exit, true)
     conn = context[:pid]
 
-    Process.flag(:trap_exit, true)
-    capture_log fn ->
-      assert %Mariaex.Error{} = query("DO SLEEP(0.1)", [], timeout: 0)
-      assert_receive {:EXIT, ^conn, {:shutdown, %DBConnection.ConnectionError{}}}
-    end
+    assert capture_log(fn ->
+      %DBConnection.ConnectionError{message: message} = query("DO SLEEP(10)", [], timeout: 50)
+      assert message =~ "tcp recv: closed"
+      assert_receive {:EXIT, ^conn, :killed}, 5000
+    end) =~ "** (DBConnection.ConnectionError)"
   end
 
   test "support primitive data types using prepared statements", context do
