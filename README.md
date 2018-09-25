@@ -29,7 +29,7 @@ After you are done, run `mix deps.get` in your shell to fetch and compile Mariae
   iex(5)> Mariaex.query(p, "SELECT id, title FROM test1")
   {:ok,
    %Mariaex.Result{columns: ["id", "title"], command: :select, num_rows: 2,
-    rows: [{1, "test"}, {2, "test2"}]}}
+    rows: [[1, "test"], [2, "test2"]}}
 ```
 
 ## Configuration
