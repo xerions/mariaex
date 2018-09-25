@@ -17,9 +17,8 @@ defmodule StreamTest do
 
   test "simple text stream", context do
     assert Mariaex.transaction(context[:pid], fn(conn) ->
-      stream = Mariaex.stream(conn, "SELECT * FROM stream", [], [])
-      assert [%Mariaex.Result{num_rows: 0, rows: []},
-              %Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}] =
+      stream = Mariaex.stream(conn, "SELECT * FROM stream", [], [query_type: :text])
+      assert [%Mariaex.Result{num_rows: 2, rows: [[1, "foo"], [2, "bar"]]}] =
         Enum.to_list(stream)
       :done
     end) == {:ok, :done}
