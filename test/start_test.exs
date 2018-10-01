@@ -1,14 +1,25 @@
 defmodule StartTest do
   use ExUnit.Case, async: true
+  import ExUnit.CaptureLog
 
   test "connection_errors" do
-    Process.flag :trap_exit, true
-    assert {:error, {%Mariaex.Error{mariadb: %{message: "Unknown database 'non_existing'"}}, _}} =
-      Mariaex.Connection.start_link(username: "mariaex_user", password: "mariaex_pass", database: "non_existing", sync_connect: true, backoff_type: :stop)
-    assert {:error, {%Mariaex.Error{mariadb: %{message: "Access denied for user " <> _}}, _}} =
-      Mariaex.Connection.start_link(username: "non_existing", database: "mariaex_test", sync_connect: true, backoff_type: :stop)
-    assert {:error, {%Mariaex.Error{message: "tcp connect: econnrefused"}, _}} =
-      Mariaex.Connection.start_link(username: "mariaex_user", password: "mariaex_pass", database: "mariaex_test", port: 60999, sync_connect: true, backoff_type: :stop)
+    Process.flag(:trap_exit, true)
+    opts = [sync_connect: true, backoff_type: :stop, max_restarts: 0]
+
+    assert capture_log(fn ->
+      {:ok, pid} = Mariaex.start_link([username: "mariaex_user", password: "mariaex_pass", database: "non_existing"] ++ opts)
+      assert_receive {:EXIT, ^pid, :killed}, 5000
+    end) =~ "** (Mariaex.Error) (1049): Unknown database 'non_existing'"
+
+    assert capture_log(fn ->
+      {:ok, pid} = Mariaex.start_link([username: "non_existing", database: "mariaex_test"] ++ opts)
+      assert_receive {:EXIT, ^pid, :killed}, 5000
+    end) =~ "** (Mariaex.Error) (1045): Access denied for user 'non_existing'"
+
+    assert capture_log(fn ->
+      {:ok, pid} = Mariaex.start_link([username: "mariaex_user", password: "mariaex_pass", database: "mariaex_test", port: 60999] ++ opts)
+      assert_receive {:EXIT, ^pid, :killed}, 5000
+    end) =~ "** (Mariaex.Error) tcp connect: econnrefused"
   end
 
   ## Tests tagged with :ssl_tests are excluded from running by default (see test_helper.exs)
