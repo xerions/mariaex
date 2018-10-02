@@ -221,7 +221,7 @@ defmodule GeometryTest do
            ]
   end
 
-  @tag :geometry_a
+  @tag :geometry
   test "inserts large polygon", context do
     table = "geometry_test_insert_large_polygon"
     :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
