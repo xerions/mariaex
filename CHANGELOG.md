@@ -1,3 +1,16 @@
+# 0.9.0-rc.0
+
+* Enhancements
+  * Support Elixir 1.3 Calendar types
+  * Support polygon types
+  * Support JSON type
+  * Support unix sockets
+  * Support transaction status propagtion from database
+  * Update to DBConnection 2.0.0-rc.0
+
+* Bug fixes
+  * Fix ping error handling
+
 # 0.8.3
 
 * Enhancements
