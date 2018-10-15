@@ -400,7 +400,7 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp skip_definitions(state, opts, 0), do: {:eof, nil, state}
+  defp skip_definitions(state, _opts, 0), do: {:eof, nil, state}
   defp skip_definitions(state, opts, count) do
     do_skip_definitions(%{state | state: :column_definitions}, opts, count)
   end
@@ -413,7 +413,7 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  defp do_skip_definitions(%{deprecated_eof: true} = state, opts, 0) do
+  defp do_skip_definitions(%{deprecated_eof: true} = state, _opts, 0) do
     {:eof, nil, state}
   end
   defp do_skip_definitions(%{deprecated_eof: false} = state, opts, 0) do
@@ -598,7 +598,7 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  defp columns_recv(%{deprecated_eof: true} = state, opts, 0, columns) do
+  defp columns_recv(%{deprecated_eof: true} = state, _opts, 0, columns) do
     {:eof, Enum.reverse(columns), 0, state}
   end
   defp columns_recv(%{deprecated_eof: false} = state, opts, 0, columns) do
