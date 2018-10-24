@@ -35,14 +35,12 @@ sql = """
 cmds = [
   ~s(mysql #{mysql_connect} -e "DROP DATABASE IF EXISTS mariaex_test;"),
   ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci';"),
-  ~s(mysql #{mysql_connect} -e "CREATE USER 'mariaex_user'@'%' IDENTIFIED BY 'mariaex_pass';"),
-  ~s(mysql #{mysql_connect} -e "GRANT ALL ON *.* TO 'mariaex_user'@'%' WITH GRANT OPTION"),
+  ~s(mysql #{mysql_connect} -e "GRANT ALL ON *.* TO 'mariaex_user'@'%' IDENTIFIED BY 'mariaex_pass' WITH GRANT OPTION;"),
   ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=tcp -u mariaex_user -pmariaex_pass mariaex_test -e "#{sql}")
 ]
 
 Enum.each(cmds, fn cmd ->
   {status, output} = run_cmd.(cmd)
-  IO.puts "--> #{output}"
 
   if status != 0 do
     IO.puts """
