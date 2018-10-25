@@ -190,10 +190,10 @@ defmodule Mariaex do
       :text ->
         query = %Query{type: :text, name: name, statement: statement,
                        ref: make_ref(), num_params: 0}
-        {:ok, Mariaex.Protocol.sanitize_query(query, conn)}
+        {:ok, query}
       type when type in [:binary, nil] ->
         query = %Query{type: type, name: name, statement: statement}
-        DBConnection.prepare(conn, Mariaex.Protocol.sanitize_query(query, conn), opts)
+        DBConnection.prepare(conn, query, opts)
     end
   end
 
