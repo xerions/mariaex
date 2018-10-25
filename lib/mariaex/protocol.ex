@@ -318,6 +318,19 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  def sanitize_query(query, conn) when is_pid(conn) do
+    {:ok, pool_ref, _mod, state} = DBConnection.Connection.checkout(conn, [])
+    DBConnection.Connection.checkin(pool_ref, state, [])
+    sanitize_query(query, state)
+  end
+  def sanitize_query(query, %{opts: opts}) do
+    case Keyword.get(opts, :prepare, :named) do
+      :unnamed -> %Query{query | name: "_unnamed_"}
+      :named -> query
+    end
+  end
+  def sanitize_query(query, _state), do: query
+
   @doc """
   DBConnection callback
   """
@@ -333,6 +346,7 @@ defmodule Mariaex.Protocol do
     end
   end
   def handle_prepare(%Query{type: :binary} = query, _, s) do
+    query = sanitize_query(query, s)
     case prepare_lookup(%Query{query | binary_as: s.binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
@@ -444,6 +458,7 @@ defmodule Mariaex.Protocol do
     send_text_query(state, statement) |> text_query_recv(query)
   end
   def handle_execute(%Query{type: :binary} = query, params, _, state) do
+    query = sanitize_query(query, state)
     case execute_lookup(query, state) do
       {:execute, id, query} ->
         execute(id, query, params, state)

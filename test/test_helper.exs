@@ -101,6 +101,13 @@ defmodule Mariaex.TestHelper do
     end
   end
 
+  defmacro prepared do
+    quote do
+      [[_name, count]] = execute_text("SHOW GLOBAL STATUS LIKE '%Prepared_stmt_count%'", [])
+      String.to_integer(count)
+    end
+  end
+
   defmacro execute(query, params, opts \\ []) do
     quote do
       case Mariaex.execute(var!(context)[:pid], unquote(query), unquote(params),

@@ -65,6 +65,8 @@ defmodule Mariaex do
      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:name` - A name to register the started process (see the `:name` option
     in `GenServer.start_link/3`).
+    * `:prepare` - How to prepare queries, either `:named` to use named queries
+      or `:unnamed` to force unnamed queries (default: `:named`);
 
   ## Function signatures
 
@@ -186,10 +188,10 @@ defmodule Mariaex do
       :text ->
         query = %Query{type: :text, name: name, statement: statement,
                        ref: make_ref(), num_params: 0}
-        {:ok, query}
+        {:ok, Mariaex.Protocol.sanitize_query(query, conn)}
       type when type in [:binary, nil] ->
         query = %Query{type: type, name: name, statement: statement}
-        prepare_binary(conn, query, opts)
+        prepare_binary(conn, Mariaex.Protocol.sanitize_query(query, conn), opts)
     end
   end
 
