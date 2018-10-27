@@ -38,7 +38,7 @@ defmodule PreparedQueryTest do
 
   @tag prepare: :unnamed
   test "prepare named is unnamed when named not allowed", context do
-    assert (%Mariaex.Query{name: "_unnamed_"} = query) = prepare("42", "SELECT 42")
+    assert (%Mariaex.Query{name: ""} = query) = prepare("42", "SELECT 42")
     assert [[42]] = execute(query, [])
     assert [[42]] = execute(query, [])
     assert :ok = close(query)

@@ -16,6 +16,7 @@ defmodule Mariaex.Protocol do
   @cache_size 100
   @max_rows 500
   @nonposix_errors [:closed, :timeout]
+  @unnamed :unnamed
 
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
@@ -100,6 +101,7 @@ defmodule Mariaex.Protocol do
                         datetime: datetime,
                         json_library: json_library,
                         opts: opts}
+        s = if unnamed?(opts), do: Map.delete(s, :lru_cache), else: s
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
@@ -157,6 +159,9 @@ defmodule Mariaex.Protocol do
       :not_used
     end
   end
+
+  defp unnamed?(%{opts: opts}), do: unnamed?(opts)
+  defp unnamed?(opts), do: Keyword.get(opts, :prepare) == @unnamed
 
   defp has_ssl_opts?(nil), do: false
   defp has_ssl_opts?([]), do: false
@@ -323,13 +328,6 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp sanitize_query(query, %{opts: opts}) do
-    case Keyword.get(opts, :prepare, :named) do
-      :unnamed -> %Query{query | name: "_unnamed_"}
-      :named -> query
-    end
-  end
-
   @doc """
   DBConnection callback
   """
@@ -342,7 +340,7 @@ defmodule Mariaex.Protocol do
     end
   end
   def handle_prepare(%Query{type: :binary} = query, opts, %{binary_as: binary_as} = s) do
-    query = sanitize_query(query, s)
+    query = if unnamed?(s), do: %Query{query | name: ""}, else: query
     case prepare_lookup(%Query{query | binary_as: binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
