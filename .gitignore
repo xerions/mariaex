@@ -6,4 +6,3 @@ erl_crash.dump
 .compile.elixir
 *.swp
 /doc
-.DS_Store
