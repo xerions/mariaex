@@ -77,7 +77,9 @@ defmodule TextQueryTest do
 
   test "select timestamp", context do
     rows = execute_text("SELECT ts FROM test_text_query_table", [])
-    assert(rows == [[~N[2016-09-26 16:36:06]], [~N[2016-09-26 16:36:07]]])
+    {:ok, dt1} = DateTime.from_naive(~N[2016-09-26 16:36:06], "Etc/UTC")
+    {:ok, dt2} = DateTime.from_naive(~N[2016-09-26 16:36:07], "Etc/UTC")
+    assert(rows == [[dt1], [dt2]])
   end
 
   test "select datetime", context do
