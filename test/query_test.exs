@@ -300,8 +300,9 @@ defmodule QueryTest do
   end
 
   test "encode and decode timestamp", context do
-    timestamp = ~N[2010-10-17 10:10:30]
-    timestamp_with_msec = ~N[2010-10-17 13:32:15.12]
+    {:ok, timestamp} = DateTime.from_naive(~N[2010-10-17 10:10:30], "Etc/UTC")
+    {:ok, timestamp_with_msec} = DateTime.from_naive(~N[2010-10-17 13:32:15.12], "Etc/UTC")
+    timestamp_without_msec = %{timestamp_with_msec | microsecond: {0, 0}}
     table = "test_timestamps"
 
     sql = ~s{CREATE TABLE #{table} (id int, ts1 timestamp, ts2 timestamp)}
@@ -316,12 +317,8 @@ defmodule QueryTest do
 
     # Timestamp
     # Only MySQL 5.7 supports microseconds storage, so it will return 0 here
-    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
-    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [[~N[2010-10-17 10:10:30], ~N[2010-10-17 13:32:15]]]
-    assert query("SELECT timestamp('0000-00-00 00:00:00')", []) == [[~N[0000-01-01 00:00:00]]]
-    assert query("SELECT timestamp('0001-01-01 00:00:00')", []) == [[~N[0001-01-01 00:00:00]]]
-    assert query("SELECT timestamp('2013-12-21 23:01:27')", []) == [[~N[2013-12-21 23:01:27]]]
-    assert query("SELECT timestamp('2013-12-21 23:01:27 EST')", []) == [[~N[2013-12-21 23:01:27]]]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = 1", []) == [[timestamp, timestamp_without_msec]]
+    assert query("SELECT ts1, ts2 FROM #{table} WHERE id = ?", [1]) == [[timestamp, timestamp_without_msec]]
   end
 
   @tag connection_opts: [datetime: :tuples]

@@ -75,7 +75,7 @@ defmodule Mariaex.RowParser do
   defp type_to_atom({:time, :field_type_time}, _),           do: :time
   defp type_to_atom({:date, :field_type_date}, _),           do: :date
   defp type_to_atom({:timestamp, :field_type_datetime}, _),  do: :datetime
-  defp type_to_atom({:timestamp, :field_type_timestamp}, _), do: :datetime
+  defp type_to_atom({:timestamp, :field_type_timestamp}, _), do: :timestamp
   defp type_to_atom({:decimal, :field_type_newdecimal}, _),  do: :decimal
   defp type_to_atom({:float, :field_type_float}, _),         do: :float32
   defp type_to_atom({:float, :field_type_double}, _),        do: :float64
@@ -133,6 +133,10 @@ defmodule Mariaex.RowParser do
 
   defp decode_bin_rows(<<rest::bits>>, [:datetime | fields], null_bitfield, acc, datetime, json_library) do
     decode_datetime(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+  end
+
+  defp decode_bin_rows(<<rest::bits>>, [:timestamp | fields], null_bitfield, acc, datetime, json_library) do
+    decode_timestamp(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
   defp decode_bin_rows(<<rest::bits>>, [:decimal | fields], null_bitfield, acc, datetime, json_library) do
@@ -292,6 +296,50 @@ defmodule Mariaex.RowParser do
                    fields, null_bitfield, acc, :tuples, json_library) do
 
     decode_bin_rows(rest, fields, null_bitfield, [{year, month, day} | acc], :tuples, json_library)
+  end
+
+  defp decode_timestamp(<< 0::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :structs, json_library) do
+    datetime = %DateTime{year: 0, month: 1, day: 1, hour: 0, minute: 0, second: 0, std_offset: 0, time_zone: "Etc/UTC", utc_offset: 0, zone_abbr: "UTC"}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
+  end
+
+  defp decode_timestamp(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :structs, json_library) do
+    datetime = %DateTime{year: year, month: month, day: day, hour: 0, minute: 0, second: 0, std_offset: 0, time_zone: "Etc/UTC", utc_offset: 0, zone_abbr: "UTC"}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
+  end
+
+  defp decode_timestamp(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :structs, json_library) do
+    datetime = %DateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec, std_offset: 0, time_zone: "Etc/UTC", utc_offset: 0, zone_abbr: "UTC"}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
+  end
+
+  defp decode_timestamp(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
+                       fields, null_bitfield, acc, :structs, json_library) do
+    datetime = %DateTime{year: year, month: month, day: day, hour: hour, minute: min, second: sec, microsecond: {msec, 6}, std_offset: 0, time_zone: "Etc/UTC", utc_offset: 0, zone_abbr: "UTC"}
+    decode_bin_rows(rest, fields, null_bitfield, [datetime | acc], :structs, json_library)
+  end
+
+  defp decode_timestamp(<< 0::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{0, 0, 0}, {0, 0, 0, 0}} | acc], :tuples, json_library)
+  end
+
+  defp decode_timestamp(<<4::8-little, year::16-little, month::8-little, day::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {0, 0, 0, 0}} | acc], :tuples, json_library)
+  end
+
+  defp decode_timestamp(<< 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, 0}} | acc], :tuples, json_library)
+  end
+
+  defp decode_timestamp(<<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little, rest::bits >>,
+                       fields, null_bitfield, acc, :tuples, json_library) do
+    decode_bin_rows(rest, fields, null_bitfield, [{{year, month, day}, {hour, min, sec, msec}} | acc], :tuples, json_library)
   end
 
 
@@ -454,6 +502,10 @@ defmodule Mariaex.RowParser do
     decode_text_datetime(string, rest, fields, acc, datetime, json_library)
   end
 
+  defp decode_text_rows(string, rest, [:timestamp | fields], acc, datetime, json_library) do
+    decode_text_timestamp(string, rest, fields, acc, datetime, json_library)
+  end
+
   defp decode_text_rows(string, rest, [:json | fields], acc, datetime, json_library) do
     decode_text_json(string, rest, fields, acc, datetime, json_library)
   end
@@ -478,6 +530,18 @@ defmodule Mariaex.RowParser do
 
   defp decode_text_time(<<hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
     decode_text_part(rest, fields, [{to_int(hour), to_int(min), to_int(sec), 0} | acc], :tuples, json_library)
+  end
+
+  defp decode_text_timestamp(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :structs, json_library) do
+    datetime = %DateTime{year: to_int(year), month: to_int(month), day: to_int(day),
+                              hour: to_int(hour), minute: to_int(min), second: to_int(sec), std_offset: 0, time_zone: "Etc/UTC", utc_offset: 0, zone_abbr: "UTC"}
+    decode_text_part(rest, fields, [datetime | acc], :structs, json_library)
+  end
+
+  defp decode_text_timestamp(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,
+    _::8-little, hour::2-bytes, ?:, min::2-bytes, ?:, sec::2-bytes>>, rest, fields, acc, :tuples, json_library) do
+    decode_text_part(rest, fields, [{{to_int(year), to_int(month), to_int(day)}, {to_int(hour), to_int(min), to_int(sec), 0}} | acc], :tuples, json_library)
   end
 
   defp decode_text_datetime(<<year::4-bytes, ?-, month::2-bytes, ?-, day::2-bytes,

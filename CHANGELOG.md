@@ -1,3 +1,8 @@
+# 0.9.1
+
+* Bug fix
+  * Encode timestamps as DateTime (for now currently required to be in UTC) when opting into the new calendar types
+
 # 0.9.0
 
 * Enhancements
