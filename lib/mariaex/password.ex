@@ -1,19 +1,15 @@
 defmodule Mariaex.Password do
-  use Agent
 
-  @spec start_link(String.t) :: {:ok, pid()}
-  def start_link(password) do
-    Agent.start_link(fn -> password end)
-  end
-
-  @spec save!(String.t) :: pid()
+  @spec save!(String.t) :: :ets.tid()
   def save!(password) do
-    {:ok, pid} = start_link(password)
-    pid
+    tid = :ets.new(:password, [:private])
+    true = :ets.insert(tid, {:password, password})
+    tid
   end
 
-  @spec get(pid()) :: String.t
-  def get(pid) do
-    Agent.get(pid, &(&1))
+  @spec get(:ets.tid()) :: String.t
+  def get(tid) do
+    [password: password] = :ets.lookup(tid, :password)
+    password
   end
 end
