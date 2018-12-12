@@ -18,7 +18,9 @@ defmodule Mariaex.Protocol do
   @nonposix_errors [:closed, :timeout]
 
   @maxpacketbytes 50000000
+  @caching_sha2_password "caching_sha2_password"
   @mysql_native_password "mysql_native_password"
+  @mysql_clear_password  "mysql_clear_password"
   @mysql_old_password :mysql_old_password
 
   @client_long_password     0x00000001
@@ -33,6 +35,7 @@ defmodule Mariaex.Protocol do
   @client_multi_statements  0x00010000
   @client_multi_results     0x00020000
   @client_ps_multi_results  0x00040000
+  @client_plugin_auth       0x00080000
   @client_deprecate_eof     0x01000000
 
   @server_status_in_trans      0x0001
@@ -46,7 +49,7 @@ defmodule Mariaex.Protocol do
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
-                @client_ps_multi_results  ||| @client_deprecate_eof
+                @client_ps_multi_results  ||| @client_deprecate_eof     ||| @client_plugin_auth
 
   defstruct sock: nil,
             state: nil,
@@ -212,9 +215,16 @@ defmodule Mariaex.Protocol do
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     {database, capabilities} = capabilities(opts)
-    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: database, capability_flags: capabilities,
-                         max_size: @maxpacketbytes, character_set: 8)
+    msg = case capabilities &&& @client_connect_with_db do
+            @client_connect_with_db -> handshake_resp(username: :unicode.characters_to_binary(opts[:username]),
+                         password: scramble, database: database,
+                         capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8, plugin: plugin)
+            0 -> handshake_no_database_resp(username: :unicode.characters_to_binary(opts[:username]),
+                         password: scramble,
+                         capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8, plugin: plugin)
+          end
     msg_send(msg, s, seqnum + 1)
     handshake_recv(%{s | state: :handshake_send, deprecated_eof: deprecated_eof}, nil)
   end
@@ -226,6 +236,21 @@ defmodule Mariaex.Protocol do
         {:error, error}
       {:ok, _, _, state} ->
         activate(state, state.buffer) |> connected()
+    end
+  end
+  defp handle_handshake(packet(seqnum: seqnum, msg: auth_switch(plugin: plugin, salt: salt) = _packet), nil, state = %{opts: opts}) do
+    msg_send(auth_switch_request(password: password(plugin, opts[:password], salt)), state, seqnum + 1)
+    handshake_recv(state, nil)
+  end
+  defp handle_handshake(packet(msg: :fast_auth_success), nil, state) do
+    handshake_recv(state, nil)
+  end
+  defp handle_handshake(packet(seqnum: seqnum, msg: :perform_full_authentication), nil, state = %{opts: opts}) do
+    if opts[:ssl] && has_ssl_opts?(opts[:ssl_opts]) do
+      msg_send(caching_sha2_send_password(password: opts[:password]), state, seqnum + 1)
+      handshake_recv(state, nil)
+    else
+      raise "Not support :perform_full_authentication with insecure channel"
     end
   end
   defp handle_handshake(packet, query, state) do
@@ -1089,9 +1114,21 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  defp password(@caching_sha2_password <> _, password, salt), do: caching_sha2_password(password, salt)
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
   defp password("", password, salt),                  do: mysql_native_password(password, salt)
+  defp password(@mysql_clear_password <> _, password, _),  do: password <> <<0>>
   defp password(@mysql_old_password, password, salt), do: mysql_old_password(password, salt)
+
+  defp caching_sha2_password(password, salt) do
+    stage1 = :crypto.hash(:sha256, password)
+    stage2 = :crypto.hash(:sha256, stage1)
+    :crypto.hash_init(:sha256)
+    |> :crypto.hash_update(stage2)
+    |> :crypto.hash_update(salt)
+    |> :crypto.hash_final
+    |> bxor_binary(stage1)
+  end
 
   defp mysql_native_password(password, salt) do
     stage1 = :crypto.hash(:sha, password)
