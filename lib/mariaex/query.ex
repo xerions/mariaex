@@ -97,6 +97,10 @@ defimpl DBConnection.Query, for: Mariaex.Query do
 
   defp encode_param(nil, _binary_as),
     do: {1, :field_type_null, ""}
+  defp encode_param(%Mariaex.TypedValue{type: :binary, value: bin}, _binary_as) when is_binary(bin),
+    do: encode_param(bin, :field_type_blob)
+  defp encode_param(%Mariaex.TypedValue{type: :string, value: bin}, _binary_as) when is_binary(bin),
+    do: encode_param(bin, :field_type_var_string)
   defp encode_param(bin, binary_as) when is_binary(bin),
     do: {0, binary_as, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
   defp encode_param(int, _binary_as) when is_integer(int),

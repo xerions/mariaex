@@ -37,3 +37,8 @@ defmodule Mariaex.Cursor do
   @moduledoc false
   defstruct [:ref, :statement_id]
 end
+
+defmodule Mariaex.TypedValue do
+  @moduledoc false
+  defstruct [:type, :value]
+end
