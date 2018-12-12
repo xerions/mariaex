@@ -20,6 +20,7 @@ defmodule Mariaex.Protocol do
   @maxpacketbytes 50000000
   @mysql_native_password "mysql_native_password"
   @mysql_old_password :mysql_old_password
+  @unnamed :unnamed
 
   @client_long_password     0x00000001
   @client_found_rows        0x00000002
@@ -95,6 +96,7 @@ defmodule Mariaex.Protocol do
                         timeout: opts[:timeout],
                         json_library: json_library,
                         opts: opts}
+        s = if unnamed?(opts), do: Map.delete(s, :lru_cache), else: s
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
@@ -135,7 +137,7 @@ defmodule Mariaex.Protocol do
   end
 
   defp parse_host(host) do
-    host = if is_binary(host), do: String.to_char_list(host), else: host
+    host = if is_binary(host), do: String.to_charlist(host), else: host
 
     case :inet.parse_strict_address(host) do
       {:ok, address} ->
@@ -152,6 +154,9 @@ defmodule Mariaex.Protocol do
       :not_used
     end
   end
+
+  defp unnamed?(%{opts: opts}), do: unnamed?(opts)
+  defp unnamed?(opts), do: Keyword.get(opts, :prepare) == @unnamed
 
   defp has_ssl_opts?(nil), do: false
   defp has_ssl_opts?([]), do: false
@@ -333,6 +338,7 @@ defmodule Mariaex.Protocol do
     end
   end
   def handle_prepare(%Query{type: :binary} = query, _, s) do
+    query = if unnamed?(s), do: %Query{query | name: ""}, else: query
     case prepare_lookup(%Query{query | binary_as: s.binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
@@ -1031,7 +1037,7 @@ defmodule Mariaex.Protocol do
     l |> Enum.map(&bxor(&1, extra - 64)) |> to_string
   end
 
-  defp hash(bin) when is_binary(bin), do: bin |> to_char_list |> hash
+  defp hash(bin) when is_binary(bin), do: bin |> to_charlist |> hash
   defp hash(s), do: hash(s, 1345345333, 305419889, 7)
   defp hash([c | s], n1, n2, add) do
     n1 = bxor(n1, (((band(n1, 63) + add) * c + n1 * 256)))

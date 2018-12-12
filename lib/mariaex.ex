@@ -65,6 +65,8 @@ defmodule Mariaex do
      if not `DBConnection.Connection` (default: `DBConnection.Connection`);
     * `:name` - A name to register the started process (see the `:name` option
     in `GenServer.start_link/3`).
+    * `:prepare` - How to prepare queries, either `:named` to use named queries
+      or `:unnamed` to force unnamed queries (default: `:named`);
 
   ## Function signatures
 
