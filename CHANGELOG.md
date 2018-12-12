@@ -1,3 +1,9 @@
+# 0.8.5
+
+* Enhancements
+  * Reduce amount of prepared statements
+  * Add support for authentication of MySQL 8.0
+
 # 0.8.4
 
 * Enhancements
