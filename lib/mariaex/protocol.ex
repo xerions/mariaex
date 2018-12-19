@@ -6,6 +6,7 @@ defmodule Mariaex.Protocol do
   alias Mariaex.Query
   alias Mariaex.Cursor
   alias Mariaex.Column
+  alias Mariaex.Password
   import Mariaex.Messages
   import Mariaex.ProtocolHelper
 
@@ -135,6 +136,7 @@ defmodule Mariaex.Protocol do
     opts
     |> Keyword.put_new(:username, System.get_env("MDBUSER") || System.get_env("USER"))
     |> Keyword.put_new(:password, System.get_env("MDBPASSWORD"))
+    |> Keyword.update!(:password, &Password.save!/1)
     |> Keyword.put_new(:hostname, System.get_env("MDBHOST") || "localhost")
     |> Keyword.put_new(:port, System.get_env("MDBPORT") || 3306)
     |> Keyword.put_new(:timeout, @timeout)
@@ -214,7 +216,7 @@ defmodule Mariaex.Protocol do
     <<flag :: size(32)>> = <<flag2 :: size(16), flag1 :: size(16)>>
     deprecated_eof = (flag &&& @client_deprecate_eof) == @client_deprecate_eof
     handshake(auth_plugin_data1: salt1, auth_plugin_data2: salt2) = handshake
-    scramble = case password = opts[:password] do
+    scramble = case password = Password.get(opts[:password]) do
       nil -> ""
       ""  -> ""
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
@@ -1108,7 +1110,7 @@ defmodule Mariaex.Protocol do
 
   def dispatch(packet(msg: :mysql_old_password), state = %{opts: opts, handshake: handshake}) do
     if opts[:insecure_auth] do
-      password = opts[:password]
+      password = Password.get(opts[:password])
       %{salt: {salt1, salt2}, seqnum: seqnum} = handshake
       password = password(@mysql_old_password, password, <<salt1 :: binary, salt2 :: binary>>)
       # TODO: rethink seqnum handling
