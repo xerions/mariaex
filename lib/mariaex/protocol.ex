@@ -16,9 +16,12 @@ defmodule Mariaex.Protocol do
   @cache_size 100
   @max_rows 500
   @nonposix_errors [:closed, :timeout]
+  @unnamed :unnamed
 
   @maxpacketbytes 50000000
+  @caching_sha2_password "caching_sha2_password"
   @mysql_native_password "mysql_native_password"
+  @mysql_clear_password  "mysql_clear_password"
   @mysql_old_password :mysql_old_password
 
   @client_long_password     0x00000001
@@ -33,6 +36,7 @@ defmodule Mariaex.Protocol do
   @client_multi_statements  0x00010000
   @client_multi_results     0x00020000
   @client_ps_multi_results  0x00040000
+  @client_plugin_auth       0x00080000
   @client_deprecate_eof     0x01000000
 
   @server_status_in_trans      0x0001
@@ -46,7 +50,7 @@ defmodule Mariaex.Protocol do
   @capabilities @client_long_password     ||| @client_found_rows        ||| @client_long_flag |||
                 @client_local_files       ||| @client_protocol_41       ||| @client_transactions |||
                 @client_secure_connection ||| @client_multi_statements  ||| @client_multi_results |||
-                @client_ps_multi_results  ||| @client_deprecate_eof
+                @client_ps_multi_results  ||| @client_deprecate_eof     ||| @client_plugin_auth
 
   defstruct sock: nil,
             state: nil,
@@ -100,6 +104,7 @@ defmodule Mariaex.Protocol do
                         datetime: datetime,
                         json_library: json_library,
                         opts: opts}
+        s = if unnamed?(opts), do: Map.delete(s, :lru_cache), else: s
         handshake_recv(s, %{opts: opts})
       {:error, reason} ->
         {:error, %Mariaex.Error{message: "tcp connect: #{reason}"}}
@@ -158,6 +163,9 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  defp unnamed?(%{opts: opts}), do: unnamed?(opts)
+  defp unnamed?(opts), do: Keyword.get(opts, :prepare) == @unnamed
+
   defp has_ssl_opts?(nil), do: false
   defp has_ssl_opts?([]), do: false
   defp has_ssl_opts?(ssl_opts) when is_list(ssl_opts), do: true
@@ -212,20 +220,42 @@ defmodule Mariaex.Protocol do
       _   -> password(plugin, password, <<salt1 :: binary, salt2 :: binary>>)
     end
     {database, capabilities} = capabilities(opts)
-    msg = handshake_resp(username: :unicode.characters_to_binary(opts[:username]), password: scramble,
-                         database: database, capability_flags: capabilities,
-                         max_size: @maxpacketbytes, character_set: 8)
+    msg = case capabilities &&& @client_connect_with_db do
+            @client_connect_with_db -> handshake_resp(username: :unicode.characters_to_binary(opts[:username]),
+                         password: scramble, database: database,
+                         capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8, plugin: plugin)
+            0 -> handshake_no_database_resp(username: :unicode.characters_to_binary(opts[:username]),
+                         password: scramble,
+                         capability_flags: capabilities,
+                         max_size: @maxpacketbytes, character_set: 8, plugin: plugin)
+          end
     msg_send(msg, s, seqnum + 1)
     handshake_recv(%{s | state: :handshake_send, deprecated_eof: deprecated_eof}, nil)
   end
   defp handle_handshake(packet(msg: ok_resp(affected_rows: _affected_rows, last_insert_id: _last_insert_id) = _packet), nil, state) do
     statement = "SET CHARACTER SET " <> (state.opts[:charset] || "utf8")
     query = %Query{type: :text, statement: statement}
-    case send_text_query(state, statement) |> text_query_recv(query) do
+    case send_text_query(state, statement) |> text_query_recv([], query) do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, _, state} ->
         activate(state, state.buffer) |> connected()
+    end
+  end
+  defp handle_handshake(packet(seqnum: seqnum, msg: auth_switch(plugin: plugin, salt: salt) = _packet), nil, state = %{opts: opts}) do
+    msg_send(auth_switch_request(password: password(plugin, opts[:password], salt)), state, seqnum + 1)
+    handshake_recv(state, nil)
+  end
+  defp handle_handshake(packet(msg: :fast_auth_success), nil, state) do
+    handshake_recv(state, nil)
+  end
+  defp handle_handshake(packet(seqnum: seqnum, msg: :perform_full_authentication), nil, state = %{opts: opts}) do
+    if opts[:ssl] && has_ssl_opts?(opts[:ssl_opts]) do
+      msg_send(caching_sha2_send_password(password: opts[:password]), state, seqnum + 1)
+      handshake_recv(state, nil)
+    else
+      raise "Not support :perform_full_authentication with insecure channel"
     end
   end
   defp handle_handshake(packet, query, state) do
@@ -334,14 +364,15 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  def handle_prepare(%Query{type: :binary} = query, _, %{binary_as: binary_as} = s) do
+  def handle_prepare(%Query{type: :binary} = query, opts, %{binary_as: binary_as} = s) do
+    query = if unnamed?(s), do: %Query{query | name: ""}, else: query
     case prepare_lookup(%Query{query | binary_as: binary_as}, s) do
       {:prepared, query} ->
         {:ok, query, s}
       {:prepare, query} ->
-        prepare(query, s)
+        prepare(opts, query, s)
       {:close_prepare, id, query} ->
-        close_prepare(id, query, s)
+        close_prepare(id, opts, query, s)
     end
   end
   def handle_prepare(%Query{type: _} = query, _, s) do
@@ -368,20 +399,20 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp prepare(%Query{statement: statement} = query, s) do
+  defp prepare(opts, %Query{statement: statement} = query, s) do
     msg_send(text_cmd(command: com_stmt_prepare(), statement: statement), s, 0)
-    prepare_recv(%{s | state: :prepare_send}, query)
+    prepare_recv(%{s | state: :prepare_send}, opts, query)
   end
 
-  defp close_prepare(id, %Query{statement: statement} = query, s) do
+  defp close_prepare(id, opts, %Query{statement: statement} = query, s) do
     msgs = [stmt_close(command: com_stmt_close(), statement_id: id),
             text_cmd(command: com_stmt_prepare(), statement: statement)]
     msg_send(msgs, s, 0)
-    prepare_recv(s, query)
+    prepare_recv(s, opts, query)
   end
 
-  defp prepare_recv(state, query) do
-    case prepare_recv(state) do
+  defp prepare_recv(state, opts, query) do
+    case prepare_recv(state, opts) do
       {:prepared, id, num_params, flags, state} ->
         {:ok, prepare_insert(id, num_params, query, state), clean_state(state, flags)}
       {:ok, packet, state} ->
@@ -391,33 +422,33 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp prepare_recv(state) do
+  defp prepare_recv(state, opts) do
     state = %{state | state: :prepare_send}
-    with {:ok, packet(msg: stmt_prepare_ok(statement_id: id, num_columns: num_cols, num_params: num_params)), state} <- msg_recv(state),
-         {:eof, _, state} <- skip_definitions(state, num_params),
-         {:eof, flags, state} <- skip_definitions(state, num_cols) do
+    with {:ok, packet(msg: stmt_prepare_ok(statement_id: id, num_columns: num_cols, num_params: num_params)), state} <- msg_recv(state, opts),
+         {:eof, _, state} <- skip_definitions(state, opts, num_params),
+         {:eof, flags, state} <- skip_definitions(state, opts, num_cols) do
       {:prepared, id, num_params, flags, state}
     end
   end
 
-  defp skip_definitions(state, 0), do: {:eof, nil, state}
-  defp skip_definitions(state, count) do
-    do_skip_definitions(%{state | state: :column_definitions}, count)
+  defp skip_definitions(state, _opts, 0), do: {:eof, nil, state}
+  defp skip_definitions(state, opts, count) do
+    do_skip_definitions(%{state | state: :column_definitions}, opts, count)
   end
 
-  defp do_skip_definitions(state, rem) when rem > 0 do
-    case msg_recv(state) do
+  defp do_skip_definitions(state, opts, rem) when rem > 0 do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: column_definition_41()), state} ->
-        do_skip_definitions(state, rem-1)
+        do_skip_definitions(state, opts, rem-1)
       other ->
         other
     end
   end
-  defp do_skip_definitions(%{deprecated_eof: true} = state, 0) do
+  defp do_skip_definitions(%{deprecated_eof: true} = state, _opts, 0) do
     {:eof, nil, state}
   end
-  defp do_skip_definitions(%{deprecated_eof: false} = state, 0) do
-    case msg_recv(state) do
+  defp do_skip_definitions(%{deprecated_eof: false} = state, opts, 0) do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), state} ->
         {:eof, flags, state}
       other ->
@@ -439,17 +470,17 @@ defmodule Mariaex.Protocol do
   @doc """
   DBConnection callback
   """
-  def handle_execute(%Query{type: :text, statement: statement} = query, [], _opts, state) do
-    send_text_query(state, statement) |> text_query_recv(query)
+  def handle_execute(%Query{type: :text, statement: statement} = query, [], opts, state) do
+    send_text_query(state, statement) |> text_query_recv(opts, query)
   end
-  def handle_execute(%Query{type: :binary} = query, params, _, state) do
+  def handle_execute(%Query{type: :binary} = query, params, opts, state) do
     case execute_lookup(query, state) do
       {:execute, id, query} ->
-        execute(id, query, params, state)
+        execute(id, query, params, state, opts)
       {:prepare_execute, query} ->
-        prepare_execute(&prepare(query, &1), params, state)
+        prepare_execute(&prepare(opts, query, &1), params, state, opts)
       {:close_prepare_execute, id, query} ->
-        prepare_execute(&close_prepare(id, query, &1), params, state)
+        prepare_execute(&close_prepare(id, opts, query, &1), params, state, opts)
     end
   end
 
@@ -479,16 +510,16 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp execute(id, query, params, state) do
+  defp execute(id, query, params, state, opts) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_no_cursor, iteration_count: 1), state, 0)
-    binary_query_recv(state, query)
+    binary_query_recv(state, opts, query)
   end
 
-  defp prepare_execute(prepare, params, state) do
+  defp prepare_execute(prepare, params, state, opts) do
     case prepare.(state) do
       {:ok, query, state} ->
         id = prepare_execute_lookup(query, state)
-        execute(id, query, params, state)
+        execute(id, query, params, state, opts)
       {err, _, _} = error when err in [:error, :disconnect] ->
         error
     end
@@ -501,8 +532,8 @@ defmodule Mariaex.Protocol do
     Cache.id(cache, name)
   end
 
-  defp text_query_recv(state, query) do
-    case text_query_recv(state) do
+  defp text_query_recv(state, opts, query) do
+    case text_query_recv(state, opts) do
       {:resultset, columns, rows, flags, state} ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
         {:ok, query, {result, columns}, clean_state(state, flags)}
@@ -516,10 +547,10 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp text_query_recv(state) do
+  defp text_query_recv(state, opts) do
     state = %{state | state: :column_count}
-    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
-         {:eof, columns, _, state} <- columns_recv(state, num_cols),
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state, opts),
+         {:eof, columns, _, state} <- columns_recv(state, opts, num_cols),
          {:eof, rows, flags, state} <- text_rows_recv(state, columns) do
       {:resultset, columns, rows, flags, state}
     end
@@ -562,10 +593,10 @@ defmodule Mariaex.Protocol do
     abort_statement(state, query, code, message)
   end
 
-  defp binary_query_recv(state, query) do
-    case binary_query_recv(state) do
+  defp binary_query_recv(state, opts, query) do
+    case binary_query_recv(state, opts) do
       {:resultset, columns, bin_rows, flags, state} ->
-        binary_query_resultset(state, query, columns, bin_rows, flags)
+        binary_query_resultset(state, opts, query, columns, bin_rows, flags)
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         {:ok, result, state} = handle_ok_packet(packet, query, state)
         {:ok, query, result, state}
@@ -576,33 +607,33 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_query_recv(state) do
+  defp binary_query_recv(state, opts) do
     state = %{state | state: :column_count}
-    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
-         {:eof, columns, _, state} <- columns_recv(state, num_cols),
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state, opts),
+         {:eof, columns, _, state} <- columns_recv(state, opts, num_cols),
          {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
       {:resultset, columns, rows, flags, state}
     end
   end
 
-  defp columns_recv(state, num_cols) do
-    columns_recv(%{state | state: :column_definitions}, num_cols, [])
+  defp columns_recv(state, opts, num_cols) do
+    columns_recv(%{state | state: :column_definitions}, opts, num_cols, [])
   end
 
-  defp columns_recv(state, rem, columns) when rem > 0 do
-    case msg_recv(state) do
+  defp columns_recv(state, opts, rem, columns) when rem > 0 do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: column_definition_41(type: type, name: name, flags: flags, table: table)), state} ->
         column = %Column{name: name, table: table, type: type, flags: flags}
-        columns_recv(state, rem-1, [column | columns])
+        columns_recv(state, opts, rem-1, [column | columns])
       other ->
         other
     end
   end
-  defp columns_recv(%{deprecated_eof: true} = state, 0, columns) do
+  defp columns_recv(%{deprecated_eof: true} = state, _opts, 0, columns) do
     {:eof, Enum.reverse(columns), 0, state}
   end
-  defp columns_recv(%{deprecated_eof: false} = state, 0, columns) do
-    case msg_recv(state) do
+  defp columns_recv(%{deprecated_eof: false} = state, opts, 0, columns) do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: eof_resp(status_flags: flags)), state} ->
         {:eof, Enum.reverse(columns), flags, state}
       other ->
@@ -622,18 +653,18 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_query_resultset(state, query, columns, rows, flags) do
+  defp binary_query_resultset(state, opts, query, columns, rows, flags) do
     cond do
       (flags &&& @server_more_results_exists) == @server_more_results_exists ->
-        binary_query_more(state, query, columns, rows)
+        binary_query_more(state, opts, query, columns, rows)
       true ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
         {:ok, query, {result, columns}, clean_state(state, flags)}
     end
   end
 
-  defp binary_query_more(state, query, columns, rows) do
-    case msg_recv(state) do
+  defp binary_query_more(state, opts, query, columns, rows) do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: ok_resp(affected_rows: affected_rows, last_insert_id: last_insert_id, status_flags: flags)), state} ->
         result = %Mariaex.Result{rows: rows, num_rows: affected_rows,
           last_insert_id: last_insert_id, connection_id: state.connection_id}
@@ -735,15 +766,15 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  def handle_declare(query, params, _, state) do
+  def handle_declare(query, params, opts, state) do
     case declare_lookup(query, state) do
       {:declare, id} ->
         cursor = %Cursor{statement_id: id, ref: make_ref()}
         declare(cursor, query, params, state)
       {:prepare_declare, query} ->
-        prepare_declare(&prepare(query, &1), params, state)
+        prepare_declare(&prepare(opts, query, &1), params, state)
       {:close_prepare_declare, id, query} ->
-        prepare_declare(&close_prepare(id, query, &1), params, state)
+        prepare_declare(&close_prepare(id, opts, query, &1), params, state)
       {:text, _} ->
         cursor = %Cursor{statement_id: :text, ref: make_ref()}
         declare(cursor, query, params, state)
@@ -835,17 +866,17 @@ defmodule Mariaex.Protocol do
         other
     end
   end
-  defp first(query, %Cursor{statement_id: id}, params, _, state) do
+  defp first(query, %Cursor{statement_id: id}, params, opts, state) do
     msg_send(stmt_execute(command: com_stmt_execute(), parameters: params, statement_id: id, flags: @cursor_type_read_only, iteration_count: 1), state, 0)
-    binary_first_recv(state, query)
+    binary_first_recv(state, opts, query)
   end
 
-  defp binary_first_recv(state, query) do
-    case binary_first_recv(state) do
+  defp binary_first_recv(state, opts, query) do
+    case binary_first_recv(state, opts) do
       {:eof, columns, flags, state} ->
-        binary_first_resultset(state, query, columns, [], flags)
+        binary_first_resultset(state, opts, query, columns, [], flags)
       {:resultset, columns, rows, flags, state} ->
-        binary_first_resultset(state, query, columns, rows, flags)
+        binary_first_resultset(state, opts, query, columns, rows, flags)
       {:ok, packet(msg: ok_resp()) = packet, state} ->
         {:ok, result, state} = handle_ok_packet(packet, query, state)
         {:halt, result, state}
@@ -856,19 +887,19 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_first_recv(state) do
+  defp binary_first_recv(state, opts) do
     state = %{state | state: :column_count}
-    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state),
-         {:eof, columns, flags, state} when (flags &&& @server_status_cursor_exists) == 0 <- columns_recv(state, num_cols),
+    with {:ok, packet(msg: column_count(column_count: num_cols)), state} <- msg_recv(state, opts),
+         {:eof, columns, flags, state} when (flags &&& @server_status_cursor_exists) == 0 <- columns_recv(state, opts, num_cols),
          {:eof, rows, flags, state} <- bin_rows_recv(state, columns) do
       {:resultset, columns, rows, flags, state}
     end
   end
 
-  defp binary_first_resultset(state, query, columns, rows, flags) do
+  defp binary_first_resultset(state, opts, query, columns, rows, flags) do
     cond do
       (flags &&& @server_more_results_exists) == @server_more_results_exists ->
-        binary_first_more(state, query, columns, rows)
+        binary_first_more(state, opts, query, columns, rows)
       (flags &&& @server_status_cursor_exists) == @server_status_cursor_exists ->
         result = %Mariaex.Result{rows: rows, connection_id: state.connection_id}
         {:cont, {result, columns}, clean_state(state, flags)}
@@ -878,8 +909,8 @@ defmodule Mariaex.Protocol do
     end
   end
 
-  defp binary_first_more(state, query, columns, rows) do
-    case binary_query_more(state, query, columns, rows) do
+  defp binary_first_more(state, opts, query, columns, rows) do
+    case binary_query_more(state, opts, query, columns, rows) do
       {:ok, _query, res, state} ->
         {:halt, res, state}
       other ->
@@ -979,9 +1010,9 @@ defmodule Mariaex.Protocol do
   def handle_begin(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :idle ->
-        handle_transaction("BEGIN", s)
+        handle_transaction("BEGIN", s, opts)
       :savepoint when status == :transaction ->
-        handle_transaction("SAVEPOINT mariaex_savepoint", s)
+        handle_transaction("SAVEPOINT mariaex_savepoint", s, opts)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -993,9 +1024,9 @@ defmodule Mariaex.Protocol do
   def handle_commit(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :transaction ->
-        handle_transaction("COMMIT", s)
+        handle_transaction("COMMIT", s, opts)
       :savepoint when status == :transaction ->
-        handle_transaction("RELEASE SAVEPOINT mariaex_savepoint", s)
+        handle_transaction("RELEASE SAVEPOINT mariaex_savepoint", s, opts)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -1007,11 +1038,11 @@ defmodule Mariaex.Protocol do
   def handle_rollback(opts, %{transaction_status: status} = s) do
     case Keyword.get(opts, :mode, :transaction) do
       :transaction when status == :transaction ->
-        handle_transaction("ROLLBACK", s)
+        handle_transaction("ROLLBACK", s, opts)
       :savepoint when status == :transaction ->
         rollback_release =
           "ROLLBACK TO SAVEPOINT mariaex_savepoint; RELEASE SAVEPOINT mariaex_savepoint"
-        handle_transaction(rollback_release, s)
+        handle_transaction(rollback_release, s, opts)
       mode when mode in [:transaction, :savepoint] ->
         {status, s}
     end
@@ -1024,18 +1055,18 @@ defmodule Mariaex.Protocol do
     {status, state}
   end
 
-  defp handle_transaction(statement, state) do
+  defp handle_transaction(statement, state, opts) do
     state
     |> send_text_query(statement)
-    |> transaction_recv()
+    |> transaction_recv(opts)
   end
 
-  defp transaction_recv(state) do
-    case msg_recv(state) do
+  defp transaction_recv(state, opts) do
+    case msg_recv(state, opts) do
       {:ok, packet(msg: ok_resp(status_flags: flags)), state}
           when (flags &&& @server_more_results_exists) == @server_more_results_exists ->
         # rollback/release has multiple results
-        transaction_recv(state)
+        transaction_recv(state, opts)
       {:ok, packet(msg: ok_resp(status_flags: flags)), state} ->
         result = %Mariaex.Result{columns: [], rows: nil, num_rows: 0,
           last_insert_id: 0}
@@ -1089,9 +1120,21 @@ defmodule Mariaex.Protocol do
     end
   end
 
+  defp password(@caching_sha2_password <> _, password, salt), do: caching_sha2_password(password, salt)
   defp password(@mysql_native_password <> _, password, salt), do: mysql_native_password(password, salt)
   defp password("", password, salt),                  do: mysql_native_password(password, salt)
+  defp password(@mysql_clear_password <> _, password, _),  do: password <> <<0>>
   defp password(@mysql_old_password, password, salt), do: mysql_old_password(password, salt)
+
+  defp caching_sha2_password(password, salt) do
+    stage1 = :crypto.hash(:sha256, password)
+    stage2 = :crypto.hash(:sha256, stage1)
+    :crypto.hash_init(:sha256)
+    |> :crypto.hash_update(stage2)
+    |> :crypto.hash_update(salt)
+    |> :crypto.hash_final
+    |> bxor_binary(stage1)
+  end
 
   defp mysql_native_password(password, salt) do
     stage1 = :crypto.hash(:sha, password)
@@ -1157,34 +1200,34 @@ defmodule Mariaex.Protocol do
     sock_mod.send(sock, data)
   end
 
-  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state) do
-    msg_recv(sock_info, state, buffer)
+  defp msg_recv(%__MODULE__{sock: sock_info, buffer: buffer}=state, opts \\ []) do
+    msg_recv(sock_info, state, opts[:timeout] || state.timeout, buffer)
   end
 
-  defp msg_recv(sock, state, buffer) do
+  defp msg_recv(sock, state, timeout, buffer) do
     case msg_decode(buffer, state) do
       {:ok, _packet, _new_state}=success ->
         success
 
       {:more, more} ->
-        msg_recv(sock, state, buffer, more)
+        msg_recv(sock, state, timeout, buffer, more)
 
       {:error, _}=err ->
         err
     end
   end
 
-  defp msg_recv({sock_mod, sock}=s, state, buffer, more) do
+  defp msg_recv({sock_mod, sock}=s, state, timeout, buffer, more) do
 
-    case sock_mod.recv(sock, more, state.timeout) do
+    case sock_mod.recv(sock, more, timeout) do
       {:ok, data} when byte_size(data) < more ->
-        msg_recv(s, state, [buffer | data], more - byte_size(data))
+        msg_recv(s, state, timeout, [buffer | data], more - byte_size(data))
 
       {:ok, data} when is_binary(buffer) ->
-        msg_recv(s, state, buffer <> data)
+        msg_recv(s, state, timeout, buffer <> data)
 
       {:ok, data} when is_list(buffer) ->
-        msg_recv(s, state, IO.iodata_to_binary([buffer | data]))
+        msg_recv(s, state, timeout, IO.iodata_to_binary([buffer | data]))
 
       {:error, _} = err ->
           err

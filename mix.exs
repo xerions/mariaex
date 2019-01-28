@@ -3,7 +3,7 @@ defmodule Mariaex.Mixfile do
 
   def project do
     [app: :mariaex,
-     version: "0.9.0-dev",
+     version: "0.9.1",
      elixir: "~> 1.3",
      deps: deps(),
      name: "Mariaex",
@@ -25,7 +25,7 @@ defmodule Mariaex.Mixfile do
 
   defp deps do
     [{:decimal, "~> 1.2"},
-     {:db_connection, "~> 2.0.0-dev", github: "elixir-ecto/db_connection", ref: "bb29b5c"},
+     {:db_connection, "~> 2.0"},
      {:coverex, "~> 1.4.10", only: :test},
      {:ex_doc, ">= 0.0.0", only: :dev},
      {:poison, ">= 0.0.0", optional: true}]

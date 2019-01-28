@@ -1,3 +1,21 @@
+# 0.9.1
+
+* Bug fix
+  * Encode timestamps as DateTime (for now currently required to be in UTC) when opting into the new calendar types
+
+# 0.9.0
+
+* Enhancements
+  * Support Elixir 1.3 Calendar types
+  * Support polygon types
+  * Support JSON type
+  * Support unix sockets
+  * Support transaction status propagation from database
+  * Update to DBConnection 2.0.0
+
+* Bug fixes
+  * Fix ping error handling
+
 # 0.8.3
 
 * Enhancements

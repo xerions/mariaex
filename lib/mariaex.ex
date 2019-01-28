@@ -70,6 +70,8 @@ defmodule Mariaex do
     in `GenServer.start_link/3`).
     * `:datetime` - How datetimes should be returned. `:structs` for Elixir v1.3
       calendar types or `:tuples` for the backwards compatible tuples
+    * `:prepare` - How to prepare queries, either `:named` to use named queries
+      or `:unnamed` to force unnamed queries (default: `:named`);
 
   ## Function signatures
 

@@ -124,6 +124,12 @@ defimpl DBConnection.Query, for: Mariaex.Query do
   defp encode_param(%NaiveDateTime{year: year, month: month, day: day,
                                    hour: hour, minute: min, second: sec, microsecond: {msec, _}}, _binary_as),
     do: {0, :field_type_datetime, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
+  defp encode_param(%DateTime{time_zone: "Etc/UTC", year: year, month: month, day: day,
+                                   hour: hour, minute: min, second: sec, microsecond: {0, 0}}, _binary_as),
+    do: {0, :field_type_timestamp, << 7::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little>>}
+  defp encode_param(%DateTime{time_zone: "Etc/UTC", year: year, month: month, day: day,
+                                   hour: hour, minute: min, second: sec, microsecond: {msec, _}}, _binary_as),
+    do: {0, :field_type_timestamp, <<11::8-little, year::16-little, month::8-little, day::8-little, hour::8-little, min::8-little, sec::8-little, msec::32-little>>}
 
   defp encode_param({year, month, day}, _binary_as),
     do: {0, :field_type_date, << 4::8-little, year::16-little, month::8-little, day::8-little>>}

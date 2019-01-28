@@ -2,8 +2,9 @@ defmodule PreparedQueryTest do
   use ExUnit.Case
   import Mariaex.TestHelper
 
-  setup do
+  setup context do
     opts = [database: "mariaex_test", username: "mariaex_user", password: "mariaex_pass", backoff_type: :stop]
+    opts = opts ++ (context |> Map.to_list() |> Keyword.take([:prepare]))
     {:ok, pid} = Mariaex.Connection.start_link(opts)
     {:ok, [pid: pid]}
   end
@@ -21,7 +22,7 @@ defmodule PreparedQueryTest do
   end
 
   test "prepare, execute and close", context do
-    assert (%Mariaex.Query{} = query) = prepare("42", "SELECT 42")
+    assert (%Mariaex.Query{name: "42"} = query) = prepare("42", "SELECT 42")
     assert [[42]] = execute(query, [])
     assert [[42]] = execute(query, [])
     assert :ok = close(query)
@@ -33,6 +34,26 @@ defmodule PreparedQueryTest do
     assert [[41]] = execute(query, [41])
     assert :ok = close(query)
     assert [[43]] = query("SELECT ?", [43])
+  end
+
+  @tag prepare: :unnamed
+  test "prepare named is unnamed when named not allowed", context do
+    assert (%Mariaex.Query{name: ""} = query) = prepare("42", "SELECT 42")
+    assert [[42]] = execute(query, [])
+    assert [[42]] = execute(query, [])
+    assert :ok = close(query)
+    assert [[42]] = query("SELECT 42", [])
+  end
+
+  @tag prepare: :unnamed
+  test "stableized prepared statement count with prepare unnamed", context do
+    count = prepared() + 1
+    for _n <- 1..2 do
+      for n <- 1..10 do
+        assert [[^n]] = with_prepare!("#{n}", "SELECT #{n}", [])
+        assert ^count = prepared()
+      end
+    end
   end
 
   test "prepare and execute different queries with same name", context do
