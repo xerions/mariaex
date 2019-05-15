@@ -240,7 +240,7 @@ defmodule Mariaex.Protocol do
       {:error, error, _} ->
         {:error, error}
       {:ok, _, _, state} ->
-        activate(state, state.buffer) |> connected()
+        {:ok, %{state | buffer: state.buffer, state: :running}}
     end
   end
   defp handle_handshake(packet(seqnum: seqnum, msg: auth_switch(plugin: plugin, salt: salt) = _packet), nil, state = %{opts: opts}) do
@@ -295,63 +295,29 @@ defmodule Mariaex.Protocol do
   """
   def disconnect(_, state = %{sock: {sock_mod, sock}}) do
     msg_send(text_cmd(command: com_quit(), statement: ""), state, 0)
-    case msg_recv(state) do
-      {:ok, packet(msg: ok_resp()), _state} ->
-        sock_mod.close(sock)
-      {:ok, packet(msg: _), _state} ->
-        sock_mod.close(sock)
-      {:error, _} ->
-        sock_mod.close(sock)
-    end
-    _ = sock_mod.recv_active(sock, 0, "")
+    sock_mod.close(sock)
     :ok
   end
 
   @doc """
   DBConnection callback
   """
-  def checkout(%{buffer: :active_once, sock: {sock_mod, sock}} = s) do
-    case setopts(s, [active: :false], :active_once) do
-      :ok                       -> sock_mod.recv_active(sock, 0, "") |> handle_recv_buffer(s)
-      {:disconnect, _, _} = dis -> dis
+  def checkout(%{sock: {sock_mod, sock}} = s) do
+    case sock_mod.recv(sock, 0, 0) do
+      {:error, :timeout} -> {:ok, %{s | buffer: <<>>}}
+      {:error, description} -> do_disconnect(s, {sock_mod, "recv", description, <<>>})
+      {:ok, _} -> {:ok, %{s | buffer: <<>>}}
     end
   end
 
-  defp handle_recv_buffer({:ok, buffer}, s) do
-    {:ok, %{s | buffer: buffer}}
-  end
-  defp handle_recv_buffer({:disconnect, description}, s) do
-    do_disconnect(s, description)
-  end
 
   @doc """
   DBConnection callback
   """
   def checkin(%{buffer: buffer} = s) when is_binary(buffer) do
-    activate(s, buffer)
+    {:ok, %{s | buffer: <<>>}}
   end
 
-  ## Fake [active: once] if buffer not empty
-  defp activate(s, <<>>) do
-    case setopts(s, [active: :once], <<>>) do
-      :ok  -> {:ok, %{s | buffer: :active_once, state: :running}}
-      other -> other
-    end
-  end
-  defp activate(%{sock: {mod, sock}} = s, buffer) do
-    msg = mod.fake_message(sock, buffer)
-    send(self(), msg)
-    {:ok, %{s | buffer: :active_once, state: :running}}
-  end
-
-  defp setopts(%{sock: {mod, sock}} = s, opts, buffer) do
-    case mod.setopts(sock, opts) do
-      :ok ->
-        :ok
-      {:error, reason} ->
-        do_disconnect(s, {mod, "setopts", reason, buffer})
-    end
-  end
 
   @doc """
   DBConnection callback
@@ -1236,7 +1202,6 @@ defmodule Mariaex.Protocol do
 
 
   def msg_decode(<< len :: size(24)-little-integer, _seqnum :: size(8)-integer, message :: binary>>=header, state) when byte_size(message) >= len do
-
     {packet, rest} = decode(header, state.state)
     {:ok, packet, %{state | buffer: rest}}
   end

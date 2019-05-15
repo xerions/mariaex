@@ -67,6 +67,7 @@ cmds = [
   ~s(mysql #{mysql_connect} -e "CREATE DATABASE mariaex_test DEFAULT CHARACTER SET 'utf8' COLLATE 'utf8_general_ci';"),
   ~s(mysql #{mysql_connect} -e "#{create_user} 'mariaex_user'@'%' IDENTIFIED BY 'mariaex_pass';"),
   ~s(mysql #{mysql_connect} -e "GRANT ALL ON *.* TO 'mariaex_user'@'%' WITH GRANT OPTION"),
+  ~s(mysql #{mysql_connect} -e "FLUSH PRIVILEGES"),
   ~s(mysql --host=#{mysql_host} --port=#{mysql_port} --protocol=tcp -u mariaex_user -pmariaex_pass mariaex_test -e "#{
     sql
   }")
