@@ -38,10 +38,14 @@ defmodule StartTest do
                      backoff_type: :stop]
 
     Process.flag :trap_exit, true
-    assert {:error, {%Mariaex.Error{message: "failed to upgraded socket: {:tls_alert, 'unknown ca'}"}, _}} =
-      Mariaex.Connection.start_link(test_opts)
-    assert {:error, {%Mariaex.Error{message: "failed to upgraded socket: {:options, {:cacertfile, []}}"}, _}}  =
-      Mariaex.Connection.start_link(Keyword.put(test_opts, :ssl_opts, Keyword.drop(test_opts[:ssl_opts], [:cacertfile])))
+
+    {:error, %Mariaex.Error{message: message}} = Mariaex.Protocol.connect(test_opts)
+    assert message = "failed to upgraded socket: {:tls_alert, {:unknown_ca, 'received CLIENT ALERT: Fatal - Unknown CA'}}"
+
+    {:error, %Mariaex.Error{message: message}} = Mariaex.Protocol.connect(
+      Keyword.put(test_opts, :ssl_opts, Keyword.drop(test_opts[:ssl_opts], [:cacertfile]))
+    )
+    assert message = "failed to upgraded socket: {:options, {:cacertfile, []}}"
   end
 
   @tag :socket
