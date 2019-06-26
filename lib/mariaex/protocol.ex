@@ -1291,6 +1291,8 @@ defmodule Mariaex.Protocol do
         {:error, error, clean_state(s, nil)}
       nil ->
         {:error, error, clean_state(s, nil)}
+      %{opts: _opts} ->
+        {:error, error, clean_state(s, nil)}
     end
   end
 end
