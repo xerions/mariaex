@@ -1040,6 +1040,9 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
+    d = Base.encode16(data)
+    IO.inspect(d)
+
     {:ok, %{coordinates: coordinates}} =
       data
       |> Base.encode16()
