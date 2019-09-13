@@ -222,6 +222,31 @@ defmodule GeometryTest do
   end
 
   @tag :geometry
+  test "selects multipolygon", context do
+    table = "geometry_test_select_multipolygon"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+    :ok =
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        1,
+        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+      ])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+             [
+               %Mariaex.Geometry.MultiPolygon{
+                 coordinates: [
+                   [
+                     [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
+                   ]
+                 ],
+                 srid: 0
+               }
+             ]
+           ]
+  end
+
+  @tag :geometry
   test "inserts large polygon", context do
     table = "geometry_test_insert_large_polygon"
     :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
