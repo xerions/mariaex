@@ -229,10 +229,10 @@ defmodule GeometryTest do
     :ok =
       query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
         1,
-        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(5 5,7 5,7 7,5 7, 5 5)))"
       ])
 
-    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+    assert query("SELECT ST_AsText(polygon) from #{table} WHERE id = ?", [1]) == [
              [
                %Mariaex.Geometry.MultiPolygon{
                  coordinates: [
