@@ -111,6 +111,11 @@ defmodule Mariaex.RowParser do
         {:ok, %{coordinates: coordinates}} = Geo.WKT.decode(string)
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
 
+      ["POINT" <> _ = string | _] ->
+        # manual intervention
+        {:ok, %{coordinates: coordinates}} = Geo.WKT.decode(string)
+        [%Mariaex.Geometry.Point{srid: 0, coordinates: coordinates}]
+
       string ->
         string
     end
