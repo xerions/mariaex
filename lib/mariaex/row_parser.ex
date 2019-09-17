@@ -1042,26 +1042,6 @@ defmodule Mariaex.RowParser do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
   end
 
-  # multipolygon
-  defp decode_geometry(
-         <<len::32-little, _next::8-little, data::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    d = Base.encode16(data)
-    # len = Base.encode16(len)
-
-    {:ok, %{coordinates: coordinates}} =
-      data
-      |> Base.encode16()
-      |> Geo.WKB.decode()
-
-    [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-  end
-
   ### GEOMETRY HELPERS
 
   defp decode_rings(<<rings_and_rows::bits>>, num_rings, state, datetime, json_library) do
