@@ -102,18 +102,7 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
-    # string =
-    # |> case String.contains?(string, "MULTIPOLYGON(") do
     decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
-    |> case do
-      ["MULTIPOLYGON" <> _ = string | _] ->
-        # manual intervention
-        {:ok, %{coordinates: coordinates}} = Geo.WKT.decode(string)
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-
-      string ->
-        string
-    end
   end
 
   defp decode_bin_rows(
@@ -1030,25 +1019,34 @@ defmodule Mariaex.RowParser do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
   end
 
-  # # multipolygon
-  # defp decode_geometry(
-  #        <<len::32-little, _next::8-little, data::bits>>,
-  #        fields,
-  #        null_bitfield,
-  #        acc,
-  #        datetime,
-  #        json_library
-  #      ) do
-  #   d = Base.encode16(data)
-  #   # len = Base.encode16(len)
-  #
-  #   {:ok, %{coordinates: coordinates}} =
-  #     data
-  #     |> Base.encode16()
-  #     |> Geo.WKB.decode()
-  #
-  #   [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-  # end
+  defp decode_geometry(
+         <<_len::8-little, _var_a::8-little, _var_b::8-little, srid::32-little, 1::8-little,
+           3::32-little, num_rings::32-little, rest::bits>>,
+         fields,
+         null_bitfield,
+         acc,
+         datetime,
+         json_library
+       ) do
+    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
+  end
+
+  # multipolygon
+  defp decode_geometry(
+         <<_len::32-little, _next::8-little, data::bits>>,
+         fields,
+         null_bitfield,
+         acc,
+         datetime,
+         json_library
+       ) do
+    {:ok, %{coordinates: coordinates}} =
+      data
+      |> Base.encode16()
+      |> Geo.WKB.decode()
+
+    [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+  end
 
   ### GEOMETRY HELPERS
 
