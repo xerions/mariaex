@@ -1063,13 +1063,24 @@ defmodule Mariaex.RowParser do
          json_library
        ) do
     IO.puts(" [ MULTIPOLYGON ] ")
-    IO.puts(">> Data:")
-    IO.puts(data |> Base.encode16())
+    # IO.puts(">> first four")
+    # IO.puts(first_four)
+    # IO.puts(">> 4 little")
+    # IO.puts(first_four |> Base.encode16())
 
-    {:ok, %{coordinates: coordinates}} =
+    # <<_len::32-little, _next::8-little, data::bits>> = all_data
+    # IO.puts(">> Data:")
+    data =
       data
       |> Base.encode16()
-      |> Geo.WKB.decode()
+      |> case do
+        "0000" <> rest -> rest
+        data -> data
+      end
+
+    IO.puts(data)
+
+    {:ok, %{coordinates: coordinates}} = data |> Geo.WKB.decode()
 
     [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
   end
