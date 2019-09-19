@@ -94,6 +94,17 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc], datetime, json_library)
   end
 
+  # defp decode_bin_rows(
+  #        <<rest::bits>>,
+  #        [:string | fields],
+  #        null_bitfield,
+  #        acc,
+  #        datetime,
+  #        json_library
+  #      ) do
+  #   decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+  # end
+
   defp decode_bin_rows(
          <<rest::bits>>,
          [:string | fields],
@@ -102,7 +113,18 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
+    # string =
+    # |> case String.contains?(string, "MULTIPOLYGON(") do
     decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+    |> case do
+      ["MULTIPOLYGON" <> _ = string | _] ->
+        # manual intervention
+        {:ok, %{coordinates: coordinates}} = Geo.WKT.decode(string)
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+
+      string ->
+        string
+    end
   end
 
   defp decode_bin_rows(
