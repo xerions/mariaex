@@ -1062,6 +1062,10 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
+    IO.puts(" [ MULTIPOLYGON ] ")
+    IO.puts(">> Data:")
+    IO.puts(data |> Base.encode16())
+
     {:ok, %{coordinates: coordinates}} =
       data
       |> Base.encode16()
