@@ -1030,37 +1030,25 @@ defmodule Mariaex.RowParser do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
   end
 
-  defp decode_geometry(
-         <<_len::8-little, _var_a::8-little, _var_b::8-little, srid::32-little, 1::8-little,
-           3::32-little, num_rings::32-little, rest::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
-  end
-
-  # multipolygon
-  defp decode_geometry(
-         <<len::32-little, _next::8-little, data::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    d = Base.encode16(data)
-    # len = Base.encode16(len)
-
-    {:ok, %{coordinates: coordinates}} =
-      data
-      |> Base.encode16()
-      |> Geo.WKB.decode()
-
-    [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-  end
+  # # multipolygon
+  # defp decode_geometry(
+  #        <<len::32-little, _next::8-little, data::bits>>,
+  #        fields,
+  #        null_bitfield,
+  #        acc,
+  #        datetime,
+  #        json_library
+  #      ) do
+  #   d = Base.encode16(data)
+  #   # len = Base.encode16(len)
+  #
+  #   {:ok, %{coordinates: coordinates}} =
+  #     data
+  #     |> Base.encode16()
+  #     |> Geo.WKB.decode()
+  #
+  #   [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+  # end
 
   ### GEOMETRY HELPERS
 
