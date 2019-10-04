@@ -1089,6 +1089,10 @@ defmodule Mariaex.RowParser do
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
     end
 
+    IO.inspect mp
+    IO.inspect fields
+    IO.inspect acc
+
     decode_bin_rows(
       <<>>,
       fields,
