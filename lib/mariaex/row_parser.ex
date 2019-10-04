@@ -1086,7 +1086,7 @@ defmodule Mariaex.RowParser do
       {:ok, %{coordinates: coordinates}} ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
       _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
     end
 
     IO.inspect mp
@@ -1122,7 +1122,7 @@ defmodule Mariaex.RowParser do
       {:ok, %{coordinates: coordinates}} ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
       _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
     end
     IO.inspect mp
     IO.inspect fields
