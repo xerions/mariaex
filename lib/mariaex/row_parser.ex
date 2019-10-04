@@ -1077,6 +1077,8 @@ defmodule Mariaex.RowParser do
     json_library,
     :deeper
   ) do
+    IO.puts "MULTIPOLY 1"
+    mp=
     data
     |> Base.encode16()
     |> Geo.WKB.decode()
@@ -1086,6 +1088,15 @@ defmodule Mariaex.RowParser do
       _ ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
     end
+
+    decode_bin_rows(
+      <<>>,
+      fields,
+      null_bitfield,
+      mp,
+      datetime,
+      json_library
+    )
   end
 
   defp decode_geometry(
@@ -1098,6 +1109,8 @@ defmodule Mariaex.RowParser do
     json_library,
     :deeper
   ) do
+    IO.puts "MULTIPOLY 2"
+    mp=
     data
     |> Base.encode16()
     |> Geo.WKB.decode()
@@ -1107,6 +1120,15 @@ defmodule Mariaex.RowParser do
       _ ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
     end
+
+    decode_bin_rows(
+      <<>>,
+      fields,
+      null_bitfield,
+      mp,
+      datetime,
+      json_library
+    )
   end
 
   ### GEOMETRY HELPERS
