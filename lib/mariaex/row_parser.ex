@@ -113,18 +113,7 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
-    # string =
-    # |> case String.contains?(string, "MULTIPOLYGON(") do
     decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
-    # |> case do
-    #   ["MULTIPOLYGON" <> _ = string | _] ->
-    #     # manual intervention
-    #     {:ok, %{coordinates: coordinates}} = Geo.WKT.decode(string)
-    #     [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-    #
-    #   string ->
-    #     string
-    # end
   end
 
   defp decode_bin_rows(
@@ -1075,50 +1064,49 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
-    IO.puts(" [ MULTIPOLYGON CATCH ALL] ")
-    data = Base.encode16(rest)
-    IO.inspect(data)
     decode_geometry(rest, fields, null_bitfield, acc, datetime, json_library, :deeper)
   end
 
   defp decode_geometry(
-         <<_1::8, _2::8, 1::8, srid::32-little, data::bits>>,
+    <<_1::8, _2::8, 1::8, _srid::32-little, data::bits>>,
          # <<_len::32-little, data::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library,
-         :deeper
-       ) do
-    IO.puts(" [ MULTIPOLYGON BIS ] ")
-
-    data = Base.encode16(data)
-    IO.puts(data)
-
-    {:ok, %{coordinates: coordinates}} = data |> Geo.WKB.decode()
-
-    [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+    fields,
+    null_bitfield,
+    acc,
+    datetime,
+    json_library,
+    :deeper
+  ) do
+    data
+    |> Base.encode16()
+    |> Geo.WKB.decode()
+    |> case do
+      {:ok, %{coordinates: coordinates}} ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+      _ ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
+    end
   end
 
   defp decode_geometry(
-         <<_len::8, srid::32-little, data::bits>>,
+    <<_len::8, srid::32-little, data::bits>>,
          # <<_len::32-little, data::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library,
-         :deeper
-       ) do
-    IO.puts(" [ MULTIPOLYGON ] ")
-
-    data = Base.encode16(data)
-    IO.puts(data)
-
-    {:ok, %{coordinates: coordinates}} = data |> Geo.WKB.decode()
-
-    [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+    fields,
+    null_bitfield,
+    acc,
+    datetime,
+    json_library,
+    :deeper
+  ) do
+    data
+    |> Base.encode16()
+    |> Geo.WKB.decode()
+    |> case do
+      {:ok, %{coordinates: coordinates}} ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+      _ ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: []}]
+    end
   end
 
   ### GEOMETRY HELPERS
