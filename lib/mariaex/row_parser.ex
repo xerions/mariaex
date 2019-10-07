@@ -311,12 +311,14 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
-    IO.puts ">> byte inspection for MULTI small"
-         <<_::40-little, data::bits>> = data
-         # IO.inspect a
-         # IO.inspect b
-         IO.puts ">> will decode:"
-         IO.inspect data
+    IO.puts(">> byte inspection for MULTI small")
+    <<_::40-little, data::bits>> = data
+    # IO.inspect a
+    # IO.inspect b
+    IO.puts(">> will decode:")
+    IO.inspect(data)
+    IO.puts(">> Full HEX string:")
+    IO.inspect(Base.encode16(data))
 
     # IO.inspect a
     # IO.inspect b
@@ -326,11 +328,17 @@ defmodule Mariaex.RowParser do
       data
       |> Base.encode16()
       |> Geo.WKB.decode()
-         IO.inspect geometry
-         geometry = geometry
+
+    IO.inspect(geometry)
+
+    geometry =
+      geometry
       |> case do
-        {:ok, %{coordinates: coordinates}} -> %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
-        {:error, reason} -> raise RuntimeError
+        {:ok, %{coordinates: coordinates}} ->
+          %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
+
+        {:error, reason} ->
+          raise RuntimeError
       end
 
     # IO.inspect(mp)
@@ -356,12 +364,14 @@ defmodule Mariaex.RowParser do
          datetime,
          json_library
        ) do
-    IO.puts ">> byte inspection for MULTI big"
-         <<_::56-little, data::bits>> = rest
-         IO.puts ">> boef"
+    IO.puts(">> byte inspection for MULTI big")
+    <<_::56-little, data::bits>> = rest
+    IO.puts(">> boef")
     IO.inspect(rest)
-         IO.puts ">> will decode:"
-         IO.inspect data
+    IO.puts(">> will decode:")
+    IO.inspect(data)
+    IO.puts(">> Full HEX string:")
+    IO.inspect(Base.encode16(data))
     #
     # IO.inspect a
     # IO.inspect b
@@ -371,11 +381,17 @@ defmodule Mariaex.RowParser do
       data
       |> Base.encode16()
       |> Geo.WKB.decode()
-         IO.inspect geometry
-         geometry = geometry
+
+    IO.inspect(geometry)
+
+    geometry =
+      geometry
       |> case do
-        {:ok, %{coordinates: coordinates}} -> %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
-        {:error, reason} -> raise RuntimeError
+        {:ok, %{coordinates: coordinates}} ->
+          %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
+
+        {:error, reason} ->
+          raise RuntimeError
       end
 
     # IO.inspect(mp)
@@ -393,7 +409,14 @@ defmodule Mariaex.RowParser do
   end
 
   # geom original fallback
-  defp decode_bin_rows(<<rest::bits>>, [:geometry | fields], null_bitfield, acc, datetime, json_library) do
+  defp decode_bin_rows(
+         <<rest::bits>>,
+         [:geometry | fields],
+         null_bitfield,
+         acc,
+         datetime,
+         json_library
+       ) do
     decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
