@@ -222,15 +222,70 @@ defmodule GeometryTest do
   end
 
   @tag :geometry
-  test "selects multipolygon", context do
-    table = "geometry_test_select_multipolygon"
+  test "selects multipolygon small", context do
+    table = "geometry_test_select_multipolygon_small"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        1,
+        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+      ])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        2,
+        "MULTIPOLYGON(((0 0,9 0,10 10,0 10,0 0), (0 0,9 0,10 10,0 10,0 0)))"
+      ])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        3,
+        "MULTIPOLYGON(((0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+      ])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        4,
+        "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+      ])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        5,
+        "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+      ])
+
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        6,
+        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
+      ])
+
+    query("SELECT polygon from #{table} WHERE id = ?", [1])
+    query("SELECT polygon from #{table} WHERE id = ?", [2])
+    query("SELECT polygon from #{table} WHERE id = ?", [3])
+    query("SELECT polygon from #{table} WHERE id = ?", [4])
+    query("SELECT polygon from #{table} WHERE id = ?", [5])
+    # query("SELECT polygon from #{table} WHERE id = ?", [6])
+
+    # assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+    #          [
+    #            %Mariaex.Geometry.MultiPolygon{
+    #              coordinates: [
+    #                [
+    #                  [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
+    #                ]
+    #              ],
+    #              srid: 0
+    #            }
+    #          ]
+    #        ]
+  end
+
+  @tag :geometry
+  test "selects multipolygon big", context do
+    table = "geometry_test_select_multipolygon_big"
     :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
 
     :ok =
       query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
         1,
         "MULTIPOLYGON(((4.57194637529312 51.1304976104622,4.5719456823779 51.1304911409263,4.57194190145305 51.1304558575716,4.5718987642112 51.1304576061535,4.57186807665152 51.1304230814653,4.57185896009319 51.1303372932618,4.5718491046378 51.1303369789215,4.57184170201291 51.1302856883616,4.57177769747367 51.1302891142029,4.57173030145679 51.1302916507285,4.57175164609133 51.1304656897283,4.57179898668547 51.1304642411419,4.57180236166633 51.1305052089537,4.57183384042735 51.1305035478472,4.57194637529312 51.1304976104622)))"
-        # "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
       ])
 
     assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
