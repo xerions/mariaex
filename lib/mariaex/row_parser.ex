@@ -325,9 +325,9 @@ defmodule Mariaex.RowParser do
 
     |> case do
       {:ok, %{coordinates: coordinates}} ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+        %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
       _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
+        %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}
     end
     # IO.inspect(mp)
     decode_bin_rows(
@@ -365,9 +365,9 @@ defmodule Mariaex.RowParser do
 
     |> case do
       {:ok, %{coordinates: coordinates}} ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+        %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
       _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
+        %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}
     end
     # IO.inspect(mp)
     # decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
