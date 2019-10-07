@@ -240,27 +240,27 @@ defmodule GeometryTest do
         3,
         "MULTIPOLYGON(((0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
       ])
-
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        4,
-        "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-      ])
-
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        5,
-        "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-      ])
-
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        6,
-        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
-      ])
+      #
+      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      #   4,
+      #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+      # ])
+      #
+      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      #   5,
+      #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+      # ])
+      #
+      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      #   6,
+      #   "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
+      # ])
 
     query("SELECT polygon from #{table} WHERE id = ?", [1])
     query("SELECT polygon from #{table} WHERE id = ?", [2])
     query("SELECT polygon from #{table} WHERE id = ?", [3])
-    query("SELECT polygon from #{table} WHERE id = ?", [4])
-    query("SELECT polygon from #{table} WHERE id = ?", [5])
+    # query("SELECT polygon from #{table} WHERE id = ?", [4])
+    # query("SELECT polygon from #{table} WHERE id = ?", [5])
     # query("SELECT polygon from #{table} WHERE id = ?", [6])
 
     # assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
