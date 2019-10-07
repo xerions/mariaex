@@ -327,22 +327,24 @@ defmodule Mariaex.RowParser do
       |> Base.encode16()
       |> Geo.WKB.decode()
          IO.inspect geometry
-    #   |> case do
-    #     {:ok, geometry} -> geometry
-    #     {:error, reason} -> raise RuntimeError
-    #   end
-    #
-    # # IO.inspect(mp)
-    # decode_bin_rows(
-    #   <<>>,
-    #   fields,
-    #   null_bitfield,
-    #   [geometry | acc],
-    #   datetime,
-    #   json_library
-    # )
+         geometry = geometry
+      |> case do
+        {:ok, %{coordinates: coordinates}} -> %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
+        {:error, reason} -> raise RuntimeError
+      end
 
+    # IO.inspect(mp)
     # decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
+    #
+
+    decode_bin_rows(
+      <<>>,
+      fields,
+      null_bitfield,
+      [geometry | acc],
+      datetime,
+      json_library
+    )
   end
 
   defp decode_bin_rows(
@@ -372,7 +374,7 @@ defmodule Mariaex.RowParser do
          IO.inspect geometry
          geometry = geometry
       |> case do
-        {:ok, geometry} -> geometry
+        {:ok, %{coordinates: coordinates}} -> %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
         {:error, reason} -> raise RuntimeError
       end
 
