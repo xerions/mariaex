@@ -220,4 +220,143 @@ defmodule GeometryTest do
              ]
            ]
   end
+
+  @tag :geometry
+  test "selects multipolygon small", context do
+    table = "geometry_test_select_multipolygon_small"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      1,
+      "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      2,
+      "MULTIPOLYGON(((0 0,9 0,10 10,0 10,0 0), (0 0,9 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      3,
+      "MULTIPOLYGON(((0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    #
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      4,
+      "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      5,
+      "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      6,
+      "MULTIPOLYGON(((4.35554272955447 50.8344774430414,4.35561923590878 50.8345082853225,4.35564141521065 50.8345182810146,4.35568665778556 50.8345366994142,4.35575020328256 50.8345636070154,4.35577359663775 50.8345733229607,4.35606095752371 50.834692886668,4.35611477257777 50.8346404831346,4.35574189237614 50.8344852850432,4.35569787416155 50.834467633372,4.35566084416278 50.8344514758203,4.35559753861042 50.8344251297455,4.35554272955447 50.8344774430414)))"
+    ])
+
+    query("SELECT polygon from #{table} WHERE id = ?", [1])
+    query("SELECT polygon from #{table} WHERE id = ?", [2])
+    query("SELECT polygon from #{table} WHERE id = ?", [3])
+    query("SELECT polygon from #{table} WHERE id = ?", [4])
+    query("SELECT polygon from #{table} WHERE id = ?", [5])
+    query("SELECT polygon from #{table} WHERE id = ?", [6])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+             [
+               %Mariaex.Geometry.MultiPolygon{
+                 coordinates: [
+                   [
+                     [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
+                   ]
+                 ],
+                 srid: 0
+               }
+             ]
+           ]
+  end
+
+  @tag :geometry
+  test "selects multipolygon big", context do
+    table = "geometry_test_select_multipolygon_big"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+    :ok =
+      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+        1,
+        "MULTIPOLYGON(((0.0 0.0,10.0 0.0,10.0 10.0,0.0 10.0,0.0 0.0)))"
+      ])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+             [
+               %Mariaex.Geometry.MultiPolygon{
+                 coordinates: [
+                   [
+                     [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
+                   ]
+                 ],
+                 srid: 0
+               }
+             ]
+           ]
+  end
+
+  @tag :geometry
+  test "inserts large polygon", context do
+    table = "geometry_test_insert_large_polygon"
+    :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
+
+    polygon = %Mariaex.Geometry.Polygon{
+      coordinates: [
+        [
+          {4.375889897346497, 51.20387196361823},
+          {4.381211400032043, 51.19935444755919},
+          {4.393399357795715, 51.19709552339094},
+          {4.399235844612122, 51.19515921451808},
+          {4.40902054309845, 51.19257734276737},
+          {4.416401982307434, 51.19182426958834},
+          {4.426015019416809, 51.19300766477249},
+          {4.434083104133606, 51.19903175088785},
+          {4.438546299934387, 51.20494749738101},
+          {4.445756077766418, 51.21312073325066},
+          {4.449189305305481, 51.21849707104884},
+          {4.449532628059387, 51.22226013396642},
+          {4.44197952747345, 51.22763540452407},
+          {4.430821537971497, 51.2349447650688},
+          {4.424641728401184, 51.23698687887106},
+          {4.421551823616028, 51.2403185541701},
+          {4.410393834114075, 51.24128576954669},
+          {4.40352737903595, 51.24171563651943},
+          {4.397862553596497, 51.23924384656603},
+          {4.399750828742981, 51.23311753378148},
+          {4.398205876350403, 51.2251628580361},
+          {4.375889897346497, 51.20387196361823}
+        ]
+      ],
+      srid: 0
+    }
+
+    :ok = query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ?)}, [1, polygon])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [[polygon]]
+
+    polygon = %Mariaex.Geometry.Polygon{
+      coordinates: [
+        [
+          {4.375889897346497, 51.20387196361823},
+          {4.381211400032043, 51.19935444755919},
+          {4.399750828742981, 51.23311753378148},
+          {4.398205876350403, 51.2251628580361},
+          {4.375889897346497, 51.20387196361823}
+        ]
+      ],
+      srid: 0
+    }
+
+    :ok = query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ?)}, [2, polygon])
+
+    assert query("SELECT polygon from #{table} WHERE id = ?", [2]) == [[polygon]]
+  end
 end
