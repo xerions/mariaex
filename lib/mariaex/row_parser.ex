@@ -1049,8 +1049,8 @@ defmodule Mariaex.RowParser do
       {:ok, %Geo.MultiPolygon{coordinates: coordinates}} ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
 
-      _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
+      {:error, reason} ->
+        {:error, reason}
     end
 
     # Enum.reverse(acc)

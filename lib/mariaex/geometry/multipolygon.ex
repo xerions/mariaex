@@ -1,6 +1,6 @@
 defmodule Mariaex.Geometry.MultiPolygon do
   @moduledoc """
-  Define the Polygon struct
+  Define the MultiPolygon struct
   """
 
   @type t :: %Mariaex.Geometry.MultiPolygon{
