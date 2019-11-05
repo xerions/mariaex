@@ -94,17 +94,6 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, nullint >>> 1, [nil | acc], datetime, json_library)
   end
 
-  # defp decode_bin_rows(
-  #        <<rest::bits>>,
-  #        [:string | fields],
-  #        null_bitfield,
-  #        acc,
-  #        datetime,
-  #        json_library
-  #      ) do
-  #   decode_string(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
-  # end
-
   defp decode_bin_rows(
          <<rest::bits>>,
          [:string | fields],
@@ -303,112 +292,6 @@ defmodule Mariaex.RowParser do
     decode_json(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
   end
 
-  defp decode_bin_rows(
-         <<_::16-little, 0::8, _::24-little, 6::8-little, _rest::bits>> = data,
-         [:geometry | fields],
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    IO.puts(">> byte inspection for MULTI small")
-    <<_::40-little, data::bits>> = data
-    # IO.inspect a
-    # IO.inspect b
-    IO.puts(">> will decode:")
-    IO.inspect(data)
-    IO.puts(">> Full HEX string:")
-    IO.inspect(Base.encode16(data))
-
-    # IO.inspect a
-    # IO.inspect b
-    # IO.inspect d
-    # IO.inspect e
-    geometry =
-      data
-      |> Base.encode16()
-      |> Geo.WKB.decode()
-
-    IO.inspect(geometry)
-
-    geometry =
-      geometry
-      |> case do
-        {:ok, %{coordinates: coordinates}} ->
-          %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
-
-        {:error, reason} ->
-          raise RuntimeError
-      end
-
-    # IO.inspect(mp)
-    # decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
-    #
-
-    decode_bin_rows(
-      <<>>,
-      fields,
-      null_bitfield,
-      [geometry | acc],
-      datetime,
-      json_library
-    )
-  end
-
-  defp decode_bin_rows(
-         <<_a::16-little, 1::8, _b::40-little, 6::8-little, r::bits>> = rest,
-         # <<a::8, b::8, 1::8, d::8, e::8, f::8, g::8, r::bits>> = rest,
-         [:geometry | fields],
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    IO.puts(">> byte inspection for MULTI big")
-    <<_::56-little, data::bits>> = rest
-    IO.puts(">> boef")
-    IO.inspect(rest)
-    IO.puts(">> will decode:")
-    IO.inspect(data)
-    IO.puts(">> Full HEX string:")
-    IO.inspect(Base.encode16(data))
-    #
-    # IO.inspect a
-    # IO.inspect b
-    # IO.inspect d
-    # IO.inspect e
-    geometry =
-      data
-      |> Base.encode16()
-      |> Geo.WKB.decode()
-
-    IO.inspect(geometry)
-
-    geometry =
-      geometry
-      |> case do
-        {:ok, %{coordinates: coordinates}} ->
-          %Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}
-
-        {:error, reason} ->
-          raise RuntimeError
-      end
-
-    # IO.inspect(mp)
-    # decode_geometry(rest, fields, null_bitfield >>> 1, acc, datetime, json_library)
-    #
-
-    decode_bin_rows(
-      <<>>,
-      fields,
-      null_bitfield,
-      [geometry | acc],
-      datetime,
-      json_library
-    )
-  end
-
-  # geom original fallback
   defp decode_bin_rows(
          <<rest::bits>>,
          [:geometry | fields],
@@ -1084,6 +967,38 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, nullint, [json | acc], datetime, json_library)
   end
 
+  defp decode_geometry(<<n::8-little, _srid::32-little, wkb::bits>>, _, _, _, _, _)
+       when n < 251 do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFC, _::16-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFD, _::24-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFE, _::64-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(wkb) do
+    wkb
+    |> Base.encode16()
+    |> Geo.WKB.decode()
+    |> case do
+      {:ok, %{coordinates: coordinates}} ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+
+      _ ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
+    end
+
+    # Enum.reverse(acc)
+  end
+
   defp decode_geometry(
          <<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64,
            y::little-float-64, rest::bits>>,
@@ -1135,127 +1050,6 @@ defmodule Mariaex.RowParser do
        ) do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
   end
-
-  defp decode_geometry(
-         <<_len::8-little, _var_a::8-little, _var_b::8-little, srid::32-little, 1::8-little,
-           3::32-little, num_rings::32-little, rest::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
-  end
-
-  defp decode_geometry(
-         <<_len::8-little, _var_a::8-little, _var_b::8-little, srid::32-little, 6::8-little,
-           3::32-little, num_rings::32-little, rest::bits>>,
-         fields,
-         null_bitfield,
-         acc,
-         datetime,
-         json_library
-       ) do
-    decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
-  end
-
-  # multipolygon
-
-  # defp decode_geometry(
-  #        <<rest::bits>>,
-  #        fields,
-  #        null_bitfield,
-  #        acc,
-  #        datetime,
-  #        json_library
-  #      ) do
-  #   <<first::1, rest2::bits>> = rest
-  #   # IO.inspect first
-  #   IO.inspect(rest)
-  #   decode_geometry(rest, fields, null_bitfield, acc, datetime, json_library, :deeper)
-  # end
-
-  # defp decode_geometry(
-  #        <<1::1, _v0::7, _v1::8-little, srid::32-little, type::8-little, data::bits>>,
-  #        # <<_len::32-little, data::bits>>,
-  #        fields,
-  #        null_bitfield,
-  #        acc,
-  #        datetime,
-  #        json_library,
-  #        :deeper
-  #      ) do
-  #   # IO.puts "len: #{len}"
-  #   # IO.puts "srid: #{srid}"
-  #   # IO.puts "geom type: #{type}"
-  #   # IO.puts "MULTIPOLY 2"
-  #   # IO.puts "data: #{data}"
-  #   mp =
-  #     data
-  #     |> Base.encode16()
-  #     |> Geo.WKB.decode()
-  #     |> case do
-  #       {:ok, %{coordinates: coordinates}} ->
-  #         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-  #
-  #       _ ->
-  #         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
-  #     end
-  #
-  #   # IO.inspect mp
-  #   # IO.inspect fields
-  #   # IO.inspect acc
-  #
-  #   decode_bin_rows(
-  #     <<>>,
-  #     fields,
-  #     null_bitfield,
-  #     mp,
-  #     datetime,
-  #     json_library
-  #   )
-  # end
-
-  # defp decode_geometry(
-  #        <<_a::32-little, _::8-little, _::8-little, type::8-little, data::bits>>,
-  #        # <<0::1, _v0::7, _v1::6-little, srid::32-little, type::8-little, data::bits>>,
-  #        # <<_len::32-little, data::bits>>,
-  #        fields,
-  #        null_bitfield,
-  #        acc,
-  #        datetime,
-  #        json_library,
-  #        :deeper
-  #      ) do
-  #   # IO.puts "MULTIPOLY 1"
-  #   # IO.puts "type: #{type}"
-  #   # IO.puts "data: #{data}"
-  #   mp =
-  #     data
-  #     |> Base.encode16()
-  #     |> Geo.WKB.decode()
-  #     |> case do
-  #       {:ok, %{coordinates: coordinates}} ->
-  #         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-  #
-  #       _ ->
-  #         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
-  #     end
-  #
-  #   # IO.inspect mp
-  #   # IO.inspect fields
-  #   # IO.inspect acc
-  #
-  #   decode_bin_rows(
-  #     <<>>,
-  #     fields,
-  #     null_bitfield,
-  #     mp,
-  #     datetime,
-  #     json_library
-  #   )
-  # end
 
   ### GEOMETRY HELPERS
 
