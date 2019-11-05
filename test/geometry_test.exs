@@ -226,35 +226,36 @@ defmodule GeometryTest do
     table = "geometry_test_select_multipolygon_small"
     :ok = query("CREATE TABLE #{table} (id serial, polygon geometry)", [])
 
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        1,
-        "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
-      ])
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      1,
+      "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0)))"
+    ])
 
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        2,
-        "MULTIPOLYGON(((0 0,9 0,10 10,0 10,0 0), (0 0,9 0,10 10,0 10,0 0)))"
-      ])
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      2,
+      "MULTIPOLYGON(((0 0,9 0,10 10,0 10,0 0), (0 0,9 0,10 10,0 10,0 0)))"
+    ])
 
-      query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-        3,
-        "MULTIPOLYGON(((0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-      ])
-      #
-      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-      #   4,
-      #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-      # ])
-      #
-      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-      #   5,
-      #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-      # ])
-      #
-      # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-      #   6,
-      #   "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
-      # ])
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      3,
+      "MULTIPOLYGON(((0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    #
+    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+    #   4,
+    #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    # ])
+    #
+    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+    #   5,
+    #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    # ])
+    #
+    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+    #   6,
+    #   "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
+    # ])
 
     query("SELECT polygon from #{table} WHERE id = ?", [1])
     query("SELECT polygon from #{table} WHERE id = ?", [2])
@@ -285,7 +286,7 @@ defmodule GeometryTest do
     :ok =
       query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
         1,
-"MULTIPOLYGON(((5.33809483908898 50.931434094553,5.3380587206966 50.9313002645469,5.33786975535669 50.9313221025901,5.33786864177932 50.9313222314575,5.33786873002179 50.9313225362472,5.33786886336134 50.9313229965882,5.33790207696938 50.9314378498167,5.33797243145023 50.9314312513234,5.33798068257056 50.9314304772378,5.33798292736448 50.9314434929944,5.33809483908898 50.931434094553)))"
+        "MULTIPOLYGON(((0.0 0.0,10.0 0.0,10.0 10.0,0.0 10.0,0.0 0.0)))"
       ])
 
     assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [

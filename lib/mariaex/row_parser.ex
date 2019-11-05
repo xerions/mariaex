@@ -1023,7 +1023,6 @@ defmodule Mariaex.RowParser do
 
   defp decode_geometry(<<n::8-little, _srid::32-little, wkb::bits>>, _, _, _, _, _)
        when n < 251 do
-    IO.puts(">> multipoly small")
     decode_geometry(wkb)
   end
 
