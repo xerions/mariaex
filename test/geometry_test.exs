@@ -242,40 +242,40 @@ defmodule GeometryTest do
     ])
 
     #
-    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-    #   4,
-    #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-    # ])
-    #
-    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-    #   5,
-    #   "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
-    # ])
-    #
-    # query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
-    #   6,
-    #   "MULTIPOLYGON(((0 0,10 0,10 10,0 10,0 0),(0 0,10 0,10 10,0 10,0 0)))"
-    # ])
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      4,
+      "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      5,
+      "MULTIPOLYGON(((0 0,10 0,10 10,5 8, 0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0), (0 0,8 0,10 10,0 10,0 0)))"
+    ])
+
+    query(~s{INSERT INTO #{table} (id, polygon) VALUES (?, ST_GeomFromText(?))}, [
+      6,
+      "MULTIPOLYGON(((4.35554272955447 50.8344774430414,4.35561923590878 50.8345082853225,4.35564141521065 50.8345182810146,4.35568665778556 50.8345366994142,4.35575020328256 50.8345636070154,4.35577359663775 50.8345733229607,4.35606095752371 50.834692886668,4.35611477257777 50.8346404831346,4.35574189237614 50.8344852850432,4.35569787416155 50.834467633372,4.35566084416278 50.8344514758203,4.35559753861042 50.8344251297455,4.35554272955447 50.8344774430414)))"
+    ])
 
     query("SELECT polygon from #{table} WHERE id = ?", [1])
     query("SELECT polygon from #{table} WHERE id = ?", [2])
     query("SELECT polygon from #{table} WHERE id = ?", [3])
-    # query("SELECT polygon from #{table} WHERE id = ?", [4])
-    # query("SELECT polygon from #{table} WHERE id = ?", [5])
-    # query("SELECT polygon from #{table} WHERE id = ?", [6])
+    query("SELECT polygon from #{table} WHERE id = ?", [4])
+    query("SELECT polygon from #{table} WHERE id = ?", [5])
+    query("SELECT polygon from #{table} WHERE id = ?", [6])
 
-    # assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
-    #          [
-    #            %Mariaex.Geometry.MultiPolygon{
-    #              coordinates: [
-    #                [
-    #                  [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
-    #                ]
-    #              ],
-    #              srid: 0
-    #            }
-    #          ]
-    #        ]
+    assert query("SELECT polygon from #{table} WHERE id = ?", [1]) == [
+             [
+               %Mariaex.Geometry.MultiPolygon{
+                 coordinates: [
+                   [
+                     [{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}]
+                   ]
+                 ],
+                 srid: 0
+               }
+             ]
+           ]
   end
 
   @tag :geometry
