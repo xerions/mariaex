@@ -967,38 +967,6 @@ defmodule Mariaex.RowParser do
     decode_bin_rows(rest, fields, nullint, [json | acc], datetime, json_library)
   end
 
-  defp decode_geometry(<<n::8-little, _srid::32-little, wkb::bits>>, _, _, _, _, _)
-       when n < 251 do
-    decode_geometry(wkb)
-  end
-
-  defp decode_geometry(<<0xFC, _::16-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
-    decode_geometry(wkb)
-  end
-
-  defp decode_geometry(<<0xFD, _::24-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
-    decode_geometry(wkb)
-  end
-
-  defp decode_geometry(<<0xFE, _::64-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
-    decode_geometry(wkb)
-  end
-
-  defp decode_geometry(wkb) do
-    wkb
-    |> Base.encode16()
-    |> Geo.WKB.decode()
-    |> case do
-      {:ok, %{coordinates: coordinates}} ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
-
-      _ ->
-        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
-    end
-
-    # Enum.reverse(acc)
-  end
-
   defp decode_geometry(
          <<25::8-little, srid::32-little, 1::8-little, 1::32-little, x::little-float-64,
            y::little-float-64, rest::bits>>,
@@ -1049,6 +1017,38 @@ defmodule Mariaex.RowParser do
          json_library
        ) do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
+  end
+
+  defp decode_geometry(<<n::8-little, _srid::32-little, wkb::bits>>, _, _, _, _, _)
+       when n < 251 do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFC, _::16-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFD, _::24-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(<<0xFE, _::64-little, _srid::32-little, wkb::bits>>, _, _, _, _, _) do
+    decode_geometry(wkb)
+  end
+
+  defp decode_geometry(wkb) do
+    wkb
+    |> Base.encode16()
+    |> Geo.WKB.decode()
+    |> case do
+      {:ok, %{coordinates: coordinates}} ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
+
+      _ ->
+        [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: [[]]}]
+    end
+
+    # Enum.reverse(acc)
   end
 
   ### GEOMETRY HELPERS
