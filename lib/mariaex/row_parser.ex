@@ -1019,8 +1019,11 @@ defmodule Mariaex.RowParser do
     decode_rings(rest, num_rings, {srid, fields, null_bitfield, acc}, datetime, json_library)
   end
 
+  # custom, for multipolygon
+
   defp decode_geometry(<<n::8-little, _srid::32-little, wkb::bits>>, _, _, _, _, _)
        when n < 251 do
+    IO.puts(">> multipoly small")
     decode_geometry(wkb)
   end
 
@@ -1041,7 +1044,10 @@ defmodule Mariaex.RowParser do
     |> Base.encode16()
     |> Geo.WKB.decode()
     |> case do
-      {:ok, %{coordinates: coordinates}} ->
+      {:ok, %Geo.Polygon{coordinates: coordinates}} ->
+        [%Mariaex.Geometry.Polygon{srid: 0, coordinates: coordinates}]
+
+      {:ok, %Geo.MultiPolygon{coordinates: coordinates}} ->
         [%Mariaex.Geometry.MultiPolygon{srid: 0, coordinates: coordinates}]
 
       _ ->
