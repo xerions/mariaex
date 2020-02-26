@@ -416,9 +416,12 @@ defmodule Mariaex do
   transaction.
 
   ### Options
+  
     * `:max_rows` - Maximum numbers of rows in a result (default to `#{@max_rows}`)
     * `:query_type` - `:binary` to use binary protocol, `:text` to use text
       protocol or `nil` to try binary but fallback to text (default `nil`)
+      
+  ## Example
 
       Mariaex.transaction(pid, fn(conn) ->
         stream = Mariaex.stream(conn, "SELECT id FROM posts WHERE title like $1", ["%my%"])
