@@ -5,14 +5,14 @@ defmodule Mariaex.Result do
     * `command` - An atom of the query command, for example: `:select` or
                   `:insert`;
     * `columns` - The column names;
-    * `rows` - The result set. A list of tuples, each tuple corresponding to a
-               row, each element in the tuple corresponds to a column;
+    * `rows` - The result set. A list of lists, each list corresponding to a
+               row, each element of the inner list corresponds to a column value;
     * `num_rows` - The number of fetched or affected rows;
   """
 
   @type t :: %__MODULE__{
     columns:  [String.t] | nil,
-    rows:     [tuple] | nil,
+    rows:     [[any]] | nil,
     last_insert_id: integer,
     num_rows: integer,
     connection_id: nil}
