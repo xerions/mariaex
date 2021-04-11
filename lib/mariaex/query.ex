@@ -171,6 +171,12 @@ defimpl DBConnection.Query, for: Mariaex.Query do
     encode_param(mysql_wkb, :field_type_geometry)
   end
 
+  # TODO
+  defp encode_param(term, _binary_as) when is_map(term) do
+      {:ok, bin} = Jason.encode(term)
+      {0, :field_type_var_string, << to_length_encoded_integer(byte_size(bin)) :: binary, bin :: binary >>}
+  end
+
   defp encode_param(other, _binary_as),
     do: raise ArgumentError, "query has invalid parameter #{inspect other}"
 

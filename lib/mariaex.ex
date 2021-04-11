@@ -450,6 +450,11 @@ defmodule Mariaex do
     DBConnection.child_spec(Mariaex.Protocol, opts)
   end
 
+  @spec json_library() :: module()
+  def json_library() do
+    Application.fetch_env!(:mysql, :json_library)
+  end
+  
   ## Helpers
 
   defp run_query(op, conn, query, params, opts) do

@@ -6,6 +6,7 @@ defmodule Mariaex.Mixfile do
      version: "0.9.1",
      elixir: "~> 1.3",
      deps: deps(),
+     xref: [exclude: [:ssl, Ecto.QueryError, Ecto.Type, Ecto.UUID, Ecto.Adapters.SQL]],
      name: "Mariaex",
      source_url: "https://github.com/xerions/mariaex",
      test_coverage: [tool: Coverex.Task, coveralls: true],
