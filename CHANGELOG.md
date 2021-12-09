@@ -48,7 +48,7 @@
 # 0.8.0
 
 * Enhancements
-  * add MDBPORT enviroment
+  * add MDBPORT environment
   * add streaming support
 
 * Backwards incompatible changes
@@ -90,7 +90,7 @@
 # 0.7.4
 
 * Bug fixes
-  * make function for getting formated version more robust to different formats
+  * make function for getting formatted version more robust to different formats
 
 # 0.7.3
 
@@ -172,7 +172,7 @@
 
 # 0.4.1
 
-* Enhancments
+* Enhancements
   * decode values on client side
   * add possibility to do decoding later
 
@@ -191,7 +191,7 @@
 
 # 0.3.1
 
-* Enhancments
+* Enhancements
   * add keepalive to connection, per default is disabled
 
 * Bug fixes
@@ -218,7 +218,7 @@
 
 # 0.2.0
 
-* Enhancments
+* Enhancements
   * add caching and reusing of prepared statements
 
 * Backwards incompatible changes
@@ -226,7 +226,7 @@
 
 # 0.1.7
 
-* Enhancments
+* Enhancements
   * initial implementation of stored procedures
   * add year, smallint and mediumint decoding
   * allow query command delimiter be \n
@@ -239,7 +239,7 @@
 
 # 0.1.5
 
-* Enhancments
+* Enhancements
   * Allow add own :socket_options
 
 * Bug fixes

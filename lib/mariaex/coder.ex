@@ -197,7 +197,7 @@ defmodule Mariaex.Coder do
   defp match({key, _, [:string_eof]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: binary)]
   end
-  # this clauses are wrong, because it is imposible to generate this kind of integer in a binary match
+  # this clauses are wrong, because it is impossible to generate this kind of integer in a binary match
   defp match({key, _, [:length_encoded_integer]}, :encode) do
     [(quote do: unquote(Macro.var(key, nil)) :: integer)]
   end

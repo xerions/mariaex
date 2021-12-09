@@ -3,7 +3,7 @@ defmodule Mariaex.RowParser do
   Parse a row of the MySQL protocol
 
   This parser makes extensive use of binary pattern matching and recursion to take advantage
-  of Erlang's optimizer that will not create sub binaries when called recusively.
+  of Erlang's optimizer that will not create sub binaries when called recursively.
   """
   use Bitwise
   alias Mariaex.Column
